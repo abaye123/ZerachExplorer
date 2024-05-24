@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "Q:\\VisualStudio\\ZerachExplorer\\LiteExplorer\\LiteExplorer.csproj": {}
+    "Q:\\VisualStudio\\ZerachExplorer\\ZerachExplorer\\LiteExplorer\\LiteExplorer.csproj": {}
   },
   "projects": {
-    "Q:\\VisualStudio\\ZerachExplorer\\LiteExplorer\\LiteExplorer.csproj": {
+    "Q:\\VisualStudio\\ZerachExplorer\\ZerachExplorer\\LiteExplorer\\LiteExplorer.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "Q:\\VisualStudio\\ZerachExplorer\\LiteExplorer\\LiteExplorer.csproj",
+        "projectUniqueName": "Q:\\VisualStudio\\ZerachExplorer\\ZerachExplorer\\LiteExplorer\\LiteExplorer.csproj",
         "projectName": "LiteExplorer",
-        "projectPath": "Q:\\VisualStudio\\ZerachExplorer\\LiteExplorer\\LiteExplorer.csproj",
+        "projectPath": "Q:\\VisualStudio\\ZerachExplorer\\ZerachExplorer\\LiteExplorer\\LiteExplorer.csproj",
         "packagesPath": "C:\\Users\\abaye\\.nuget\\packages\\",
-        "outputPath": "Q:\\VisualStudio\\ZerachExplorer\\LiteExplorer\\obj\\",
+        "outputPath": "Q:\\VisualStudio\\ZerachExplorer\\ZerachExplorer\\LiteExplorer\\obj\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
           "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"

@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "hrV3k3EZ3lbtw1TSzYtIG7U24rMaU8J33mG/dwV4Kx2YEsHXaA/43DOos5rdTiZFh111F17X04XGLbMEyqsJ5A==",
+  "dgSpecHash": "uJa07im8TDKJULkjwTEWCXCFTPEcoYOL4rN4JXWGxVbCC3+kwhTFGVH+ejtLjtBDUywgeSHzrlLOdKmLQaF/9g==",
   "success": true,
-  "projectFilePath": "Q:\\VisualStudio\\ZerachExplorer\\LiteExplorer\\LiteExplorer.csproj",
+  "projectFilePath": "Q:\\VisualStudio\\ZerachExplorer\\ZerachExplorer\\LiteExplorer\\LiteExplorer.csproj",
   "expectedPackageFiles": [
     "C:\\Users\\abaye\\.nuget\\packages\\microsoft.extensions.dependencyinjection\\6.0.1\\microsoft.extensions.dependencyinjection.6.0.1.nupkg.sha512",
     "C:\\Users\\abaye\\.nuget\\packages\\microsoft.extensions.dependencyinjection.abstractions\\6.0.0\\microsoft.extensions.dependencyinjection.abstractions.6.0.0.nupkg.sha512",
