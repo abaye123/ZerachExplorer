@@ -1,0 +1,204 @@
+﻿<UserControl x:Class="LiteExplorer.MVVM.Views.UserControls.TabContent"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:LiteExplorer.MVVM.ViewModels"
+             xmlns:c="clr-namespace:LiteExplorer.Infrastructure.Converters"
+             xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml" 
+             d:DataContext="{d:DesignInstance vm:TabContentViewModel, IsDesignTimeCreatable=True}"
+             mc:Ignorable="d">
+
+    <UserControl.InputBindings>
+        <KeyBinding Command="{Binding RunCmd}"
+                    Modifiers="Ctrl"
+                    Key="Oem3" />
+    </UserControl.InputBindings>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Grid Grid.Row="0" FlowDirection="RightToLeft">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="2*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <ui:Button Grid.Column="0"
+                       Command="{Binding BackHome}"
+                       Icon="Home32"
+                       Content="בית"
+                       BorderBrush="Transparent"
+                       Background="Transparent"
+                       Height="38"
+                       ToolTip="בית" />
+
+            <ui:Button Grid.Column="1"
+                       Command="{Binding BackCmd}"
+                       Icon="FolderArrowUp28"
+                       BorderBrush="Transparent"
+                       Background="Transparent"
+                       Height="38"
+                       ToolTip="חזור אחורה (Backspace)" />
+
+            <ui:TextBox Grid.Column="2"
+                        HorizontalContentAlignment="Stretch"
+                        Icon="Desktop32"
+                        FlowDirection="RightToLeft"
+                        Text="{Binding TabPath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+
+                <ui:TextBox.InputBindings>
+                    <KeyBinding Gesture="Enter"
+                                Command="{Binding OpenCmd}"
+                                CommandParameter="{Binding TabPath}" />
+                </ui:TextBox.InputBindings>
+            </ui:TextBox>
+
+            <ui:Button Grid.Column="3"
+                       Height="{Binding ActualWidth, RelativeSource={RelativeSource Self}}"
+                       Command="{Binding OpenCmd}"
+                       CommandParameter="{Binding TabPath}"
+                       Icon="ArrowClockwise32"
+                       BorderBrush="Transparent"
+                       Background="Transparent"
+                       ToolTip="פתח את הנתיב המצוין" />
+
+            <ui:Button Grid.Column="4"
+                       Command="{Binding ChangeDesign}"
+                       CommandParameter="{Binding TabPath}"
+                       Icon="HistoryDismiss32"
+                       Content="מחיקת היסטוריית אוצריא"
+                       BorderBrush="Transparent"
+                       Background="Transparent"
+                       MaxHeight="38"
+                       ToolTip="מחיקת ההיסטוריה של תוכנת אוצריא" HorizontalAlignment="Right" VerticalAlignment="Stretch" Click="Button_Click_1"  />
+
+            <ui:Button Grid.Column="5"
+                       Height="{Binding ActualWidth, RelativeSource={RelativeSource Self}}"
+                       Command="{Binding ChangeDesign}"
+                       CommandParameter="{Binding TabPath}"
+                       Icon="Settings32"
+                       BorderBrush="Transparent"
+                       Background="Transparent"
+                       ToolTip="אודות והגדרות" HorizontalAlignment="Center" VerticalAlignment="Stretch" Click="Button_Click" />
+        </Grid>
+
+        <ListView x:Name="items"
+                  Grid.Row="1"
+                  FlowDirection="RightToLeft"
+                  ItemsSource="{Binding FileSystemObjects}"
+                  SelectedItem="{Binding CurrentFileSystemObject}"
+                  SelectionMode="Extended"
+                  VirtualizingPanel.CacheLength="5"
+                  VirtualizingPanel.CacheLengthUnit="Item"
+                  VirtualizingPanel.ScrollUnit="Pixel"
+                  VirtualizingPanel.VirtualizationMode="Recycling">
+
+            <ListView.Resources>
+                <ContextMenu x:Key="ItemContextMenu">
+                    <MenuItem Command="{Binding DataContext.OpenCmd, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                              CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=ListView}, Path=SelectedItem.Path}"
+                              Header="פתח" />
+                    <MenuItem Command="{Binding DataContext.DeleteCmd, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                              CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=ListView}, Path=SelectedItem.Path}"
+                              Header="מחק" />
+                    <MenuItem Command="{Binding DataContext.rename, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                              CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=ListView}, Path=SelectedItem.Path}"
+                              Header="שינוי שם" />
+                    <MenuItem Command="{Binding DataContext.SafeRemoval, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                              CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=ListView}, Path=SelectedItem.Path}"
+                              Header="הוצאה בטוחה של כונן" />
+                </ContextMenu>
+            </ListView.Resources>
+
+            <ListView.ItemContainerStyle>
+                <Style BasedOn="{StaticResource {x:Type ListViewItem}}"
+                       TargetType="{x:Type ListViewItem}">
+                    <Setter Property="ContextMenu"
+                            Value="{StaticResource ItemContextMenu}" />
+                </Style>
+            </ListView.ItemContainerStyle>
+
+            <ListView.InputBindings>
+                <KeyBinding Command="{Binding OpenCmd}"
+                            CommandParameter="{Binding CurrentFileSystemObject.Path}"
+                            Gesture="Enter" />
+                <KeyBinding Command="{Binding OpenCmd}"
+                            CommandParameter="{Binding CurrentFileSystemObject.Path}"
+                            Gesture="Space" />
+                <KeyBinding Command="{Binding BackCmd}"
+                            Gesture="Backspace" />
+            </ListView.InputBindings>
+
+            <ListView.ItemTemplate>
+                <DataTemplate>
+                    <DataTemplate.Resources>
+                        <c:UsedPercent x:Key="UsedPercentConverter" />
+                        <c:BytesToNormalSize x:Key="BytesToNormalSizeConverter" />
+                        <c:PercentToColor x:Key="PercentToColorConverter" />
+                    </DataTemplate.Resources>
+
+                    <Grid>
+                        <Grid.InputBindings>
+                            <MouseBinding Command="{Binding DataContext.OpenCmd, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                          CommandParameter="{Binding DataContext.CurrentFileSystemObject.Path, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                          Gesture="LeftDoubleClick" />
+                        </Grid.InputBindings>
+
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="5*" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="2*" />
+                        </Grid.ColumnDefinitions>
+
+                        <Grid Grid.Column="0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Image Grid.Column="0"
+                                   Margin="0,0,5,3"
+                                   Source="{Binding Image}" />
+                            <TextBlock Grid.Column="1" Text="{Binding Name}"/>
+                        </Grid>
+                        <Label Grid.Column="1"
+                               Content="{Binding Format}" />
+                        <Label Grid.Column="2"
+                               Content="{Binding Type}" />
+                        <Label Grid.Column="3"
+                               Content="{Binding TotalSpace, Converter={StaticResource BytesToNormalSizeConverter}}" />
+                        <Label Grid.Column="4"
+                               Content="{Binding Size, Converter={StaticResource BytesToNormalSizeConverter}}"
+                               Foreground="{Binding Foreground, ElementName=usedPercent}" />
+                        <Label Grid.Column="5"
+                               Content="{Binding FreeSpace, Converter={StaticResource BytesToNormalSizeConverter}}"
+                               Foreground="{Binding Background, ElementName=usedPercent}" />
+                        <ProgressBar x:Name="usedPercent"
+                                     Grid.Column="6"
+                                     Background="{Binding Value, RelativeSource={RelativeSource Self}, Converter={StaticResource PercentToColorConverter}}"
+                                     Foreground="Gray">
+                            <ProgressBar.Value>
+                                <MultiBinding Converter="{StaticResource UsedPercentConverter}">
+                                    <Binding Path="TotalSpace" />
+                                    <Binding Path="Size" />
+                                </MultiBinding>
+                            </ProgressBar.Value>
+                        </ProgressBar>
+                    </Grid>
+                </DataTemplate>
+            </ListView.ItemTemplate>
+        </ListView>
+    </Grid>
+</UserControl>
