@@ -61,3 +61,4 @@ Q:\VisualStudio\ZerachExplorer\ZerachExplorer\LiteExplorer\obj\Debug\net6.0-wind
 Q:\VisualStudio\ZerachExplorer\ZerachExplorer\LiteExplorer\obj\Debug\net6.0-windows\LiteExplorer.pdb
 Q:\VisualStudio\ZerachExplorer\ZerachExplorer\LiteExplorer\obj\Debug\net6.0-windows\LiteExplorer.genruntimeconfig.cache
 Q:\VisualStudio\ZerachExplorer\ZerachExplorer\LiteExplorer\obj\Debug\net6.0-windows\ref\LiteExplorer.dll
+Q:\VisualStudio\ZerachExplorer\ZerachExplorer\LiteExplorer\obj\Debug\net6.0-windows\LiteExplorer.sourcelink.json

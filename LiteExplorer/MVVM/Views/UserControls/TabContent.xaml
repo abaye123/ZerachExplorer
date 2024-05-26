@@ -43,7 +43,7 @@
 
             <ui:Button Grid.Column="1"
                        Command="{Binding BackCmd}"
-                       Icon="FolderArrowUp28"
+                       Icon="ArrowUp32"
                        BorderBrush="Transparent"
                        Background="Transparent"
                        Height="38"
