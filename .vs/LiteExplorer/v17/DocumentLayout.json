@@ -7,10 +7,6 @@
       "RelativeMoniker": "D:0:0:{70BF19A5-DE6B-4F68-920C-2F7C5204F029}|LiteExplorer\\LiteExplorer.csproj|solutionrelative:liteexplorer\\mvvm\\views\\usercontrols\\tabcontent.xaml||{F11ACC28-31D1-4C80-A34B-F4E09D3D753C}"
     },
     {
-      "AbsoluteMoniker": "D:0:0:{70BF19A5-DE6B-4F68-920C-2F7C5204F029}|LiteExplorer\\LiteExplorer.csproj|q:\\visualstudio\\zerachexplorer\\zerachexplorer\\liteexplorer\\mvvm\\views\\windows\\mainwindow.xaml||{F11ACC28-31D1-4C80-A34B-F4E09D3D753C}",
-      "RelativeMoniker": "D:0:0:{70BF19A5-DE6B-4F68-920C-2F7C5204F029}|LiteExplorer\\LiteExplorer.csproj|solutionrelative:liteexplorer\\mvvm\\views\\windows\\mainwindow.xaml||{F11ACC28-31D1-4C80-A34B-F4E09D3D753C}"
-    },
-    {
       "AbsoluteMoniker": "D:0:0:{70BF19A5-DE6B-4F68-920C-2F7C5204F029}|LiteExplorer\\LiteExplorer.csproj|q:\\visualstudio\\zerachexplorer\\zerachexplorer\\liteexplorer\\mvvm\\viewmodels\\tabcontentviewmodel.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
       "RelativeMoniker": "D:0:0:{70BF19A5-DE6B-4F68-920C-2F7C5204F029}|LiteExplorer\\LiteExplorer.csproj|solutionrelative:liteexplorer\\mvvm\\viewmodels\\tabcontentviewmodel.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     },
@@ -19,8 +15,12 @@
       "RelativeMoniker": "D:0:0:{70BF19A5-DE6B-4F68-920C-2F7C5204F029}|LiteExplorer\\LiteExplorer.csproj|solutionrelative:liteexplorer\\mvvm\\viewmodels\\mainwindowviewmodel.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     },
     {
-      "AbsoluteMoniker": "D:0:0:{70BF19A5-DE6B-4F68-920C-2F7C5204F029}|LiteExplorer\\LiteExplorer.csproj|q:\\visualstudio\\zerachexplorer\\zerachexplorer\\liteexplorer\\mvvm\\views\\usercontrols\\tabcontent.xaml.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
-      "RelativeMoniker": "D:0:0:{70BF19A5-DE6B-4F68-920C-2F7C5204F029}|LiteExplorer\\LiteExplorer.csproj|solutionrelative:liteexplorer\\mvvm\\views\\usercontrols\\tabcontent.xaml.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+      "AbsoluteMoniker": "D:0:0:{70BF19A5-DE6B-4F68-920C-2F7C5204F029}|LiteExplorer\\LiteExplorer.csproj|q:\\visualstudio\\zerachexplorer\\zerachexplorer\\liteexplorer\\mvvm\\views\\windows\\mainwindow.xaml||{F11ACC28-31D1-4C80-A34B-F4E09D3D753C}",
+      "RelativeMoniker": "D:0:0:{70BF19A5-DE6B-4F68-920C-2F7C5204F029}|LiteExplorer\\LiteExplorer.csproj|solutionrelative:liteexplorer\\mvvm\\views\\windows\\mainwindow.xaml||{F11ACC28-31D1-4C80-A34B-F4E09D3D753C}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{70BF19A5-DE6B-4F68-920C-2F7C5204F029}|LiteExplorer\\LiteExplorer.csproj|q:\\visualstudio\\zerachexplorer\\zerachexplorer\\liteexplorer\\infrastructure\\converters\\bytestonormalsize.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{70BF19A5-DE6B-4F68-920C-2F7C5204F029}|LiteExplorer\\LiteExplorer.csproj|solutionrelative:liteexplorer\\infrastructure\\converters\\bytestonormalsize.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     }
   ],
   "DocumentGroupContainers": [
@@ -43,14 +43,14 @@
             {
               "$type": "Document",
               "DocumentIndex": 4,
-              "Title": "TabContent.xaml.cs",
-              "DocumentMoniker": "Q:\\VisualStudio\\ZerachExplorer\\ZerachExplorer\\LiteExplorer\\MVVM\\Views\\UserControls\\TabContent.xaml.cs",
-              "RelativeDocumentMoniker": "LiteExplorer\\MVVM\\Views\\UserControls\\TabContent.xaml.cs",
-              "ToolTip": "Q:\\VisualStudio\\ZerachExplorer\\ZerachExplorer\\LiteExplorer\\MVVM\\Views\\UserControls\\TabContent.xaml.cs",
-              "RelativeToolTip": "LiteExplorer\\MVVM\\Views\\UserControls\\TabContent.xaml.cs",
-              "ViewState": "AQIAAAMAAAAAAAAAAAAAACMAAAAlAAAA",
+              "Title": "BytesToNormalSize.cs",
+              "DocumentMoniker": "Q:\\VisualStudio\\ZerachExplorer\\ZerachExplorer\\LiteExplorer\\Infrastructure\\Converters\\BytesToNormalSize.cs",
+              "RelativeDocumentMoniker": "LiteExplorer\\Infrastructure\\Converters\\BytesToNormalSize.cs",
+              "ToolTip": "Q:\\VisualStudio\\ZerachExplorer\\ZerachExplorer\\LiteExplorer\\Infrastructure\\Converters\\BytesToNormalSize.cs",
+              "RelativeToolTip": "LiteExplorer\\Infrastructure\\Converters\\BytesToNormalSize.cs",
+              "ViewState": "AQIAAAAAAAAAAAAAAAAAAB8AAAAAAAAA",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2024-05-23T23:08:04.78Z"
+              "WhenOpened": "2024-05-30T08:05:37.136Z"
             },
             {
               "$type": "Document",
@@ -66,38 +66,36 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 1,
+              "DocumentIndex": 3,
               "Title": "MainWindow.xaml",
               "DocumentMoniker": "Q:\\VisualStudio\\ZerachExplorer\\ZerachExplorer\\LiteExplorer\\MVVM\\Views\\Windows\\MainWindow.xaml",
               "RelativeDocumentMoniker": "LiteExplorer\\MVVM\\Views\\Windows\\MainWindow.xaml",
               "ToolTip": "Q:\\VisualStudio\\ZerachExplorer\\ZerachExplorer\\LiteExplorer\\MVVM\\Views\\Windows\\MainWindow.xaml",
               "RelativeToolTip": "LiteExplorer\\MVVM\\Views\\Windows\\MainWindow.xaml",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.003549|",
-              "WhenOpened": "2024-05-23T21:11:25.756Z",
-              "EditorCaption": ""
+              "WhenOpened": "2024-05-23T21:11:25.756Z"
             },
             {
               "$type": "Document",
-              "DocumentIndex": 2,
+              "DocumentIndex": 1,
               "Title": "TabContentViewModel.cs",
               "DocumentMoniker": "Q:\\VisualStudio\\ZerachExplorer\\ZerachExplorer\\LiteExplorer\\MVVM\\ViewModels\\TabContentViewModel.cs",
               "RelativeDocumentMoniker": "LiteExplorer\\MVVM\\ViewModels\\TabContentViewModel.cs",
               "ToolTip": "Q:\\VisualStudio\\ZerachExplorer\\ZerachExplorer\\LiteExplorer\\MVVM\\ViewModels\\TabContentViewModel.cs",
               "RelativeToolTip": "LiteExplorer\\MVVM\\ViewModels\\TabContentViewModel.cs",
-              "ViewState": "AQIAAAAAAAAAAAAAAAAAAGAAAAAEAAAA",
+              "ViewState": "AQIAACQBAAAAAAAAAAAkwDYBAAAfAAAA",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2024-05-23T19:37:22.571Z",
-              "EditorCaption": ""
+              "WhenOpened": "2024-05-23T19:37:22.571Z"
             },
             {
               "$type": "Document",
-              "DocumentIndex": 3,
+              "DocumentIndex": 2,
               "Title": "MainWindowViewModel.cs",
               "DocumentMoniker": "Q:\\VisualStudio\\ZerachExplorer\\ZerachExplorer\\LiteExplorer\\MVVM\\ViewModels\\MainWindowViewModel.cs",
               "RelativeDocumentMoniker": "LiteExplorer\\MVVM\\ViewModels\\MainWindowViewModel.cs",
               "ToolTip": "Q:\\VisualStudio\\ZerachExplorer\\ZerachExplorer\\LiteExplorer\\MVVM\\ViewModels\\MainWindowViewModel.cs",
               "RelativeToolTip": "LiteExplorer\\MVVM\\ViewModels\\MainWindowViewModel.cs",
-              "ViewState": "AQIAAAYAAAAAAAAAAAAAABAAAAAyAAAA",
+              "ViewState": "AQIAAAAAAAAAAAAAAAAAAAgAAAAbAAAA",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
               "WhenOpened": "2024-05-23T19:37:08.755Z"
             }

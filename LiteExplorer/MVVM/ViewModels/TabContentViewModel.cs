@@ -3,12 +3,16 @@ using LiteExplorer.Helpers.Enums;
 using LiteExplorer.Infrastructure.Commands;
 using LiteExplorer.MVVM.Models;
 using LiteExplorer.MVVM.ViewModels.Base;
+using LiteExplorer.MVVM.Views.Windows;
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.DirectoryServices.ActiveDirectory;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Threading;
@@ -20,6 +24,8 @@ internal class TabContentViewModel : ViewModel, IDisposable
     #region Private fields
 
     private readonly BackgroundWorker worker;
+
+    string[] allowedExtensions = { ".doc", ".docx", ".xls", ".xlsx", ".pdf", ".txt", ".csv", ".onetoc2", ".one" };
 
     #endregion
 
@@ -106,8 +112,6 @@ internal class TabContentViewModel : ViewModel, IDisposable
 
     #region Open
 
-    string[] allowedExtensions = { ".doc", ".docx", ".xls", ".xlsx", ".pdf", ".txt", ".csv", ".onetoc2", ".one" };
-
     public ICommand OpenCmd { get; }
 
     private void OnOpenCmdExecuted(object p)
@@ -132,7 +136,8 @@ internal class TabContentViewModel : ViewModel, IDisposable
                 }
                 else
                 {
-                    MessageBox.Show("סוג הקובץ אינו נתמך.", "שגיאה", MessageBoxButton.OK, MessageBoxImage.Error);
+                    //MessageBox.Show("סוג הקובץ אינו נתמך.", "שגיאה", MessageBoxButton.OK, MessageBoxImage.Error);
+                    MessageBox.Show("סוג הקובץ אינו נתמך", "שגיאה", MessageBoxButton.OK, MessageBoxImage.Error, MessageBoxResult.No, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
                 }
 
             }
@@ -148,6 +153,10 @@ internal class TabContentViewModel : ViewModel, IDisposable
         }
     }
 
+    #endregion
+
+    #region Delete
+
     public ICommand DeleteCmd { get; }
 
     private void onDeletePath(object p)
@@ -156,13 +165,13 @@ internal class TabContentViewModel : ViewModel, IDisposable
 
         if (string.IsNullOrEmpty(path) || path.Length < 5)
         {
-            MessageBox.Show("לא ניתן למחוק כוננים", "שגיאה", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show("לא ניתן למחוק כוננים", "שגיאה", MessageBoxButton.OK, MessageBoxImage.Information, MessageBoxResult.No, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
+            
             return;
         }
 
-        //MessageBoxResult result = MessageBox.Show($"האם אתה בטוח שאתה רוצה למחוק את {(Directory.Exists(path) ? "התיקיה" : "הקובץ")} במיקום:\n{path}?", "אישור מחיקה", MessageBoxButton.YesNo, MessageBoxImage.Warning);
         MessageBoxResult result = MessageBox.Show(
-            $"האם אתה בטוח שאתה רוצה למחוק את {(Directory.Exists(path) ? "התיקיה" : "הקובץ")} במיקום:\n{path}?",
+            $"האם אתה בטוח שאתה רוצה למחוק את {(Directory.Exists(path) ? "התיקיה" : "הקובץ")} במיקום:\n{path}?\nזוהי פעולה בלתי הפיכה!",
             "אישור מחיקה",
             MessageBoxButton.YesNo,
             MessageBoxImage.Warning,
@@ -175,7 +184,7 @@ internal class TabContentViewModel : ViewModel, IDisposable
             {
                 if (Directory.Exists(path))
                 {
-                    Directory.Delete(path, true); // true to delete recursively
+                    Directory.Delete(path, true);
                 }
                 else if (File.Exists(path))
                 {
@@ -183,7 +192,7 @@ internal class TabContentViewModel : ViewModel, IDisposable
                 }
 
                 OpenTabPath();
-                MessageBox.Show("המחיקה בוצעה בהצלחה", "מחיקה הצליחה", MessageBoxButton.OK, MessageBoxImage.Information);
+                MessageBox.Show("המחיקה בוצעה בהצלחה", "המחיקה הצליחה", MessageBoxButton.OK, MessageBoxImage.Information);
                 
             }
             catch (Exception ex)
@@ -192,6 +201,55 @@ internal class TabContentViewModel : ViewModel, IDisposable
             }
         }
     }
+
+    #endregion
+
+    #region Rename
+
+    public ICommand RenameCmd { get; }
+
+    private void OnRenameCmdExecuted(object p)
+    {
+        string path = p?.ToString();
+
+        if (path is null || Directory.Exists(path))
+        {
+            TabPath = path;
+
+            OpenTabPath();
+        }
+        else if (File.Exists(path))
+        {
+            try
+            {
+                var fileInfo = new FileInfo(path);
+
+                if (Array.IndexOf(allowedExtensions, fileInfo.Extension.ToLower()) >= 0)
+                {
+                    Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+                }
+                else
+                {
+                    //MessageBox.Show("סוג הקובץ אינו נתמך.", "שגיאה", MessageBoxButton.OK, MessageBoxImage.Error);
+                    MessageBox.Show("סוג הקובץ אינו נתמך", "שגיאה", MessageBoxButton.OK, MessageBoxImage.Error, MessageBoxResult.No, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
+                }
+
+            }
+            catch (Win32Exception ex)
+            {
+                MessageBox.Show(ex.Message, $"Error: {ex.NativeErrorCode}", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+        else
+        {
+            //Process.Start(new ProcessStartInfo($"https://www.google.com/?q={Uri.EscapeDataString(path)}") { UseShellExecute = true });
+            MessageBox.Show("ERROR", $"Error: {path}", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    #endregion
+
+    #region ChangeDesign
 
     public ICommand ChangeDesign { get; }
 
@@ -210,6 +268,9 @@ internal class TabContentViewModel : ViewModel, IDisposable
         OpenTabPath();
     }
 
+    #endregion
+
+    #region BackHome
 
     public ICommand BackHome { get; }
 
@@ -217,6 +278,37 @@ internal class TabContentViewModel : ViewModel, IDisposable
     {
         TabPath = "";
         OpenTabPath();
+    }
+
+    #endregion
+
+    #region ResetOtzaria
+
+    public ICommand ResetOtzariaCmd { get; }
+
+    private void OnResetOtzariaCmdExecuted(object p)
+    {
+        var filesToDelete = new List<string>
+            {
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), @"com.example\otzaria\tabs.isar"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), @"com.example\otzaria\history.isar"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), @"com.example\otzaria\bookmarks.isar")
+            };
+
+        string result = DeleteFiles(filesToDelete);
+        Console.WriteLine(result);
+    }
+
+    #endregion
+
+    #region OpenAbout
+
+    public ICommand OpenAboutCmd { get; }
+
+    private void OnOpenAboutCmdExecuted(object p)
+    {
+        about aboutForm = new about();
+        aboutForm.ShowDialog();
     }
 
     #endregion
@@ -240,9 +332,11 @@ internal class TabContentViewModel : ViewModel, IDisposable
         //RunCmd = new ActionCommand(OnRunCmdExecuted);
         OpenCmd = new ActionCommand(OnOpenCmdExecuted);
         DeleteCmd = new ActionCommand(onDeletePath);
+        //ChangeDesign = new ActionCommand(OnRunCmdExecuted);
         BackCmd = new ActionCommand(OnBackCmdExecuted, CanBackCmdExecute);
         BackHome = new ActionCommand(OnBackHomeExecuted);
-        //ChangeDesign = new ActionCommand(OnRunCmdExecuted);
+        ResetOtzariaCmd = new ActionCommand(OnResetOtzariaCmdExecuted);
+        OpenAboutCmd = new ActionCommand(OnOpenAboutCmdExecuted);
 
         OpenCmd.Execute(TabPath);
     }
@@ -273,7 +367,27 @@ internal class TabContentViewModel : ViewModel, IDisposable
         }
     }
 
-    private string GetDriveLabel(DriveInfo drive) => $"{(drive.VolumeLabel != "" ? drive.VolumeLabel : "Local drive")} ({drive.Name})";
+    private string GetDriveLabel(DriveInfo drive) => $"{(drive.VolumeLabel != "" ? drive.VolumeLabel : "דיסק מקומי")} ({drive.Name})";
+
+
+    private string GetDriveFormat(DriveInfo drive)
+    {
+        var driveType = drive.DriveType.ToString();
+
+        if (driveType == "Fixed")
+        {
+            return "דיסק מקומי";
+        }
+        else if (driveType == "Removable")
+        {
+            return "דיסק נשלף";
+        }
+        else
+        {
+            return driveType;
+        }
+    }
+
 
     private void worker_DoWork(object sender, DoWorkEventArgs e)
     {
@@ -302,11 +416,10 @@ internal class TabContentViewModel : ViewModel, IDisposable
                             TotalSpace = drive.TotalSize,
                             FreeSpace = drive.TotalFreeSpace,
                             Size = drive.TotalSize - drive.TotalFreeSpace,
-                            Format = drive.DriveFormat,
-                            Type = drive.DriveType.ToString()
+                            Format = drive.DriveFormat.ToString(),
+                            Type = GetDriveFormat(drive)
                         });
 
-                        //worker.ReportProgress((int)((double)FileSystemObjects.Count / (driveCount) * 100));
                     }, DispatcherPriority.Background);
                 }
                 processedDrives++;
@@ -318,6 +431,7 @@ internal class TabContentViewModel : ViewModel, IDisposable
             try
             {
                 var entryCount = new DirectoryInfo(TabPath).EnumerateFileSystemInfos().Count();
+                // Make sure the path is not on the C drive
                 if (IsNotOnDriveC(TabPath) == true)
                 {
                     int processedFiles = 0;
@@ -330,18 +444,16 @@ internal class TabContentViewModel : ViewModel, IDisposable
                             return;
                         }
 
-                        // יצירת אובייקט DirectoryInfo עבור התיקייה הנוכחית
                         var directoryInfo = new DirectoryInfo(directory);
 
-                        // בדיקה אם התיקייה מוסתרת
+                        // Skipping the file, if it is hidden
                         if ((directoryInfo.Attributes & FileAttributes.Hidden) == FileAttributes.Hidden)
                         {
                             processedFiles++;
                             worker.ReportProgress((int)((double)processedFiles / entryCount * 100));
-                            continue; // דילוג על הקובץ אם הוא מוסתר
+                            continue;
                         }
 
-                        // הוספת האובייקט לרשימה של FileSystemObjects
                         Application.Current.Dispatcher.Invoke(() =>
                         {
                             FileSystemObjects.Add(new FileSystemObject()
@@ -349,10 +461,12 @@ internal class TabContentViewModel : ViewModel, IDisposable
                                 Image = FolderManager.GetImageSource(directory, ItemState.Undefined),
                                 Name = Path.GetFileName(directory),
                                 Path = directory,
-                                Size = 0
+                                Size = 012345667658675846,
+                                TotalSpace = 012345667658675846,
+                                FreeSpace = 012345667658675846,
+                                Format = directoryInfo.LastWriteTime.ToString()
                             });
 
-                            //worker.ReportProgress((int)((double)FileSystemObjects.Count / entryCount * 100));
                         }, DispatcherPriority.Background);
 
                         processedFiles++;
@@ -378,12 +492,13 @@ internal class TabContentViewModel : ViewModel, IDisposable
                         }
 
 
-                        //if (Array.IndexOf(allowedExtensions, fileInfo.Extension.ToLower()) < 0)
-                        //{
+                        // Preventing the display of files with disallowed extensions
+                        if (Array.IndexOf(allowedExtensions, fileInfo.Extension.ToLower()) < 0)
+                        {
                             //processedFiles++;
                             //worker.ReportProgress((int)((double)processedFiles / entryCount * 100));
                             //continue;
-                        //}
+                        }
 
 
                         Application.Current.Dispatcher.Invoke(() =>
@@ -393,7 +508,11 @@ internal class TabContentViewModel : ViewModel, IDisposable
                                 Image = FileManager.GetImageSource(file),
                                 Name = Path.GetFileName(file),
                                 Path = file,
-                                Size = fileInfo.Length
+                                Size = fileInfo.Length,
+                                Format = fileInfo.LastWriteTime.ToString(),
+                                CreationTime = fileInfo.CreationTime.ToString(),
+                                TotalSpace = 012345667658675846,
+                                FreeSpace = 012345667658675846
                             });
                         }, DispatcherPriority.Background);
 
@@ -406,7 +525,7 @@ internal class TabContentViewModel : ViewModel, IDisposable
             }
             catch (UnauthorizedAccessException ex)
             {
-                MessageBox.Show(ex.Message, "Access denied", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show($"Access denied\nהגישה נדחתה\n{ex.Message}", "אין גישה", MessageBoxButton.OK, MessageBoxImage.Error, MessageBoxResult.No, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
             }
         }
     }
@@ -427,6 +546,42 @@ internal class TabContentViewModel : ViewModel, IDisposable
             throw new ArgumentException("Path cannot be null or empty", nameof(path));
 
         return !(path.StartsWith("C:", StringComparison.OrdinalIgnoreCase));
+    }
+
+
+    private static string DeleteFiles(List<string> filePaths)
+    {
+        var successList = new List<string>();
+        var failureList = new List<string>();
+
+        foreach (var filePath in filePaths)
+        {
+            try
+            {
+                if (File.Exists(filePath))
+                {
+                    File.Delete(filePath);
+                    successList.Add(filePath);
+                }
+                else
+                {
+                    //failureList.Add($"{filePath} (File not found)");
+                }
+            }
+            catch (Exception ex)
+            {
+                failureList.Add($"{filePath} (Error: {ex.Message})");
+            }
+        }
+
+        if (failureList.Any())
+        {
+            return $"לא ניתן היה למחוק חלק מהקבצים:\n{string.Join("\n", failureList)}";
+        }
+        else
+        {
+            return "success";
+        }
     }
 
 

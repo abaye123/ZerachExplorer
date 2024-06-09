@@ -72,23 +72,23 @@
                        ToolTip="פתח את הנתיב המצוין" />
 
             <ui:Button Grid.Column="4"
-                       Command="{Binding ChangeDesign}"
+                       Command="{Binding ResetOtzariaCmd}"
                        CommandParameter="{Binding TabPath}"
                        Icon="HistoryDismiss32"
                        Content="מחיקת היסטוריית אוצריא"
                        BorderBrush="Transparent"
                        Background="Transparent"
                        MaxHeight="38"
-                       ToolTip="מחיקת ההיסטוריה של תוכנת אוצריא" HorizontalAlignment="Right" VerticalAlignment="Stretch" Click="Button_Click_1"  />
+                       ToolTip="מחיקת ההיסטוריה של תוכנת אוצריא" HorizontalAlignment="Right" VerticalAlignment="Stretch" />
 
             <ui:Button Grid.Column="5"
                        Height="{Binding ActualWidth, RelativeSource={RelativeSource Self}}"
-                       Command="{Binding ChangeDesign}"
+                       Command="{Binding OpenAboutCmd}"
                        CommandParameter="{Binding TabPath}"
                        Icon="Settings32"
                        BorderBrush="Transparent"
                        Background="Transparent"
-                       ToolTip="אודות והגדרות" HorizontalAlignment="Center" VerticalAlignment="Stretch" Click="Button_Click" />
+                       ToolTip="אודות והגדרות" HorizontalAlignment="Center" VerticalAlignment="Stretch" />
         </Grid>
 
         <ListView x:Name="items"
@@ -155,8 +155,8 @@
 
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="5*" />
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="2*" />
+                            <ColumnDefinition Width="2*" />
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="*" />
@@ -174,18 +174,18 @@
                             <TextBlock Grid.Column="1" Text="{Binding Name}"/>
                         </Grid>
                         <Label Grid.Column="1"
-                               Content="{Binding Format}" />
+                               Content="{Binding Format}" Foreground="Gray" FontSize="13"/>
                         <Label Grid.Column="2"
-                               Content="{Binding Type}" />
+                               Content="{Binding Type}"  Foreground="Gray" FontSize="13"/>
                         <Label Grid.Column="3"
-                               Content="{Binding TotalSpace, Converter={StaticResource BytesToNormalSizeConverter}}" />
+                               Content="{Binding TotalSpace, Converter={StaticResource BytesToNormalSizeConverter}}"  Foreground="Gray" FontSize="13"/>
                         <Label Grid.Column="4"
                                Content="{Binding Size, Converter={StaticResource BytesToNormalSizeConverter}}"
-                               Foreground="{Binding Foreground, ElementName=usedPercent}" />
+                               Foreground="Gray" FlowDirection="LeftToRight" FontSize="13"/>
                         <Label Grid.Column="5"
                                Content="{Binding FreeSpace, Converter={StaticResource BytesToNormalSizeConverter}}"
-                               Foreground="{Binding Background, ElementName=usedPercent}" />
-                        <ProgressBar x:Name="usedPercent"
+                               Foreground="Green" FlowDirection="LeftToRight" FontSize="13"/>
+                        <!-- ProgressBar x:Name="usedPercent"
                                      Grid.Column="6"
                                      Background="{Binding Value, RelativeSource={RelativeSource Self}, Converter={StaticResource PercentToColorConverter}}"
                                      Foreground="Gray">
@@ -195,7 +195,7 @@
                                     <Binding Path="Size" />
                                 </MultiBinding>
                             </ProgressBar.Value>
-                        </ProgressBar>
+                        </ProgressBar -->
                     </Grid>
                 </DataTemplate>
             </ListView.ItemTemplate>

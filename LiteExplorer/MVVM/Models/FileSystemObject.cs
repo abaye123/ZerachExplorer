@@ -12,4 +12,6 @@ internal class FileSystemObject
     public long FreeSpace { get; set; }
     public string Format { get; set; }
     public string Type { get; set; }
+    public string CreationTime { get; set; }
+    public string LastWriteTime { get; set; }
 }
