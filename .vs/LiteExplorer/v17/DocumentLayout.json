@@ -3,6 +3,10 @@
   "WorkspaceRootPath": "Q:\\VisualStudio\\ZerachExplorer\\ZerachExplorer\\",
   "Documents": [
     {
+      "AbsoluteMoniker": "D:0:0:{70BF19A5-DE6B-4F68-920C-2F7C5204F029}|LiteExplorer\\LiteExplorer.csproj|q:\\visualstudio\\zerachexplorer\\zerachexplorer\\liteexplorer\\mvvm\\views\\windows\\about.xaml||{F11ACC28-31D1-4C80-A34B-F4E09D3D753C}",
+      "RelativeMoniker": "D:0:0:{70BF19A5-DE6B-4F68-920C-2F7C5204F029}|LiteExplorer\\LiteExplorer.csproj|solutionrelative:liteexplorer\\mvvm\\views\\windows\\about.xaml||{F11ACC28-31D1-4C80-A34B-F4E09D3D753C}"
+    },
+    {
       "AbsoluteMoniker": "D:0:0:{70BF19A5-DE6B-4F68-920C-2F7C5204F029}|LiteExplorer\\LiteExplorer.csproj|q:\\visualstudio\\zerachexplorer\\zerachexplorer\\liteexplorer\\mvvm\\views\\usercontrols\\tabcontent.xaml||{F11ACC28-31D1-4C80-A34B-F4E09D3D753C}",
       "RelativeMoniker": "D:0:0:{70BF19A5-DE6B-4F68-920C-2F7C5204F029}|LiteExplorer\\LiteExplorer.csproj|solutionrelative:liteexplorer\\mvvm\\views\\usercontrols\\tabcontent.xaml||{F11ACC28-31D1-4C80-A34B-F4E09D3D753C}"
     },
@@ -30,7 +34,7 @@
       "DocumentGroups": [
         {
           "DockedWidth": 200,
-          "SelectedChildIndex": 3,
+          "SelectedChildIndex": 2,
           "Children": [
             {
               "$type": "Bookmark",
@@ -42,7 +46,19 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 4,
+              "DocumentIndex": 0,
+              "Title": "about.xaml",
+              "DocumentMoniker": "Q:\\VisualStudio\\ZerachExplorer\\ZerachExplorer\\LiteExplorer\\MVVM\\Views\\Windows\\about.xaml",
+              "RelativeDocumentMoniker": "LiteExplorer\\MVVM\\Views\\Windows\\about.xaml",
+              "ToolTip": "Q:\\VisualStudio\\ZerachExplorer\\ZerachExplorer\\LiteExplorer\\MVVM\\Views\\Windows\\about.xaml",
+              "RelativeToolTip": "LiteExplorer\\MVVM\\Views\\Windows\\about.xaml",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.003549|",
+              "WhenOpened": "2024-06-09T11:38:57.216Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 5,
               "Title": "BytesToNormalSize.cs",
               "DocumentMoniker": "Q:\\VisualStudio\\ZerachExplorer\\ZerachExplorer\\LiteExplorer\\Infrastructure\\Converters\\BytesToNormalSize.cs",
               "RelativeDocumentMoniker": "LiteExplorer\\Infrastructure\\Converters\\BytesToNormalSize.cs",
@@ -54,7 +70,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 0,
+              "DocumentIndex": 1,
               "Title": "TabContent.xaml",
               "DocumentMoniker": "Q:\\VisualStudio\\ZerachExplorer\\ZerachExplorer\\LiteExplorer\\MVVM\\Views\\UserControls\\TabContent.xaml",
               "RelativeDocumentMoniker": "LiteExplorer\\MVVM\\Views\\UserControls\\TabContent.xaml",
@@ -66,7 +82,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 3,
+              "DocumentIndex": 4,
               "Title": "MainWindow.xaml",
               "DocumentMoniker": "Q:\\VisualStudio\\ZerachExplorer\\ZerachExplorer\\LiteExplorer\\MVVM\\Views\\Windows\\MainWindow.xaml",
               "RelativeDocumentMoniker": "LiteExplorer\\MVVM\\Views\\Windows\\MainWindow.xaml",
@@ -77,7 +93,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 1,
+              "DocumentIndex": 2,
               "Title": "TabContentViewModel.cs",
               "DocumentMoniker": "Q:\\VisualStudio\\ZerachExplorer\\ZerachExplorer\\LiteExplorer\\MVVM\\ViewModels\\TabContentViewModel.cs",
               "RelativeDocumentMoniker": "LiteExplorer\\MVVM\\ViewModels\\TabContentViewModel.cs",
@@ -89,7 +105,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 2,
+              "DocumentIndex": 3,
               "Title": "MainWindowViewModel.cs",
               "DocumentMoniker": "Q:\\VisualStudio\\ZerachExplorer\\ZerachExplorer\\LiteExplorer\\MVVM\\ViewModels\\MainWindowViewModel.cs",
               "RelativeDocumentMoniker": "LiteExplorer\\MVVM\\ViewModels\\MainWindowViewModel.cs",

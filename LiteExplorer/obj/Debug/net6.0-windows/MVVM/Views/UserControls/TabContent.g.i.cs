@@ -69,7 +69,7 @@ namespace LiteExplorer.MVVM.Views.UserControls {
                 return;
             }
             _contentLoaded = true;
-            System.Uri resourceLocater = new System.Uri("/LiteExplorer;V1.0.0.0;component/mvvm/views/usercontrols/tabcontent.xaml", System.UriKind.Relative);
+            System.Uri resourceLocater = new System.Uri("/LiteExplorer;component/mvvm/views/usercontrols/tabcontent.xaml", System.UriKind.Relative);
             
             #line 1 "..\..\..\..\..\..\MVVM\Views\UserControls\TabContent.xaml"
             System.Windows.Application.LoadComponent(this, resourceLocater);
