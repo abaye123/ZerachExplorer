@@ -14,7 +14,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("LiteExplorer")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+dcc7d5fbfce4b975d702a3d35c9f6d76d0fedaa4")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+369b629bb45db7bfec49db5a9045891a47a8c135")]
 [assembly: System.Reflection.AssemblyProductAttribute("LiteExplorer")]
 [assembly: System.Reflection.AssemblyTitleAttribute("LiteExplorer")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
