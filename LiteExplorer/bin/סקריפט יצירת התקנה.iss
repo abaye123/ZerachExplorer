@@ -2,7 +2,7 @@
 ; SEE THE DOCUMENTATION FOR DETAILS ON CREATING INNO SETUP SCRIPT FILES!
 
 #define MyAppName "ZerachExplorer"
-#define MyAppVersion "1.3.0"
+#define MyAppVersion "1.3.3"
 #define MyAppPublisher "abaye"
 #define MyAppURL "https://www.abaye.co/"
 #define MyAppExeName "ZerachExplorer.exe"
@@ -20,13 +20,13 @@ AppSupportURL={#MyAppURL}
 AppUpdatesURL={#MyAppURL}
 DefaultDirName={autopf}\{#MyAppName}
 DisableProgramGroupPage=yes
-LicenseFile=Q:\VisualStudio\ZerachExplorer\LiteExplorer\bin\הסכם רישיון משתמש קצה.txt
-InfoAfterFile=Q:\VisualStudio\ZerachExplorer\LiteExplorer\bin\תודה שהתקנת.txt
+LicenseFile="Q:\VisualStudio\ZerachExplorer\ZerachExplorer\LiteExplorer\bin\הסכם רישיון משתמש קצה.txt"
+InfoAfterFile="Q:\VisualStudio\ZerachExplorer\ZerachExplorer\LiteExplorer\bin\תודה שהתקנת.txt"
 ; Uncomment the following line to run in non administrative install mode (install for current user only.)
 ;PrivilegesRequired=lowest
-OutputDir=Q:\VisualStudio\ZerachExplorer\LiteExplorer\bin
+OutputDir=Q:\VisualStudio\ZerachExplorer\ZerachExplorer\LiteExplorer\bin
 OutputBaseFilename=ZerachExplorer_setop_{#MyAppVersion}
-SetupIconFile=Q:\VisualStudio\ZerachExplorer\LiteExplorer\Assets\app.ico
+SetupIconFile=Q:\VisualStudio\ZerachExplorer\ZerachExplorer\LiteExplorer\Assets\app.ico
 ;Password=7234
 Compression=lzma
 SolidCompression=yes
@@ -47,14 +47,14 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 
 [Files]
 ;Source: "Q:\VisualStudio\tts by Google\tts by Google\bin\x64\Debug\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
-Source: "Q:\VisualStudio\ZerachExplorer\LiteExplorer\bin\Debug\net6.0-windows\ZerachExplorer.exe"; DestDir: "{app}"; Flags: ignoreversion
-Source: "Q:\VisualStudio\ZerachExplorer\LiteExplorer\bin\Debug\net6.0-windows\LiteExplorer.deps.json"; DestDir: "{app}"; Flags: ignoreversion
-Source: "Q:\VisualStudio\ZerachExplorer\LiteExplorer\bin\Debug\net6.0-windows\LiteExplorer.dll"; DestDir: "{app}"; Flags: ignoreversion
-Source: "Q:\VisualStudio\ZerachExplorer\LiteExplorer\bin\Debug\net6.0-windows\LiteExplorer.pdb"; DestDir: "{app}"; Flags: ignoreversion
-Source: "Q:\VisualStudio\ZerachExplorer\LiteExplorer\bin\Debug\net6.0-windows\LiteExplorer.runtimeconfig.json"; DestDir: "{app}"; Flags: ignoreversion
-Source: "Q:\VisualStudio\ZerachExplorer\LiteExplorer\bin\Debug\net6.0-windows\Microsoft.Extensions.DependencyInjection.dll"; DestDir: "{app}"; Flags: ignoreversion
-Source: "Q:\VisualStudio\ZerachExplorer\LiteExplorer\bin\Debug\net6.0-windows\Microsoft.Extensions.DependencyInjection.Abstractions.dll"; DestDir: "{app}"; Flags: ignoreversion
-Source: "Q:\VisualStudio\ZerachExplorer\LiteExplorer\bin\Debug\net6.0-windows\Wpf.Ui.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "Q:\VisualStudio\ZerachExplorer\ZerachExplorer\LiteExplorer\bin\Debug\net6.0-windows\ZerachExplorer.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "Q:\VisualStudio\ZerachExplorer\ZerachExplorer\LiteExplorer\bin\Debug\net6.0-windows\LiteExplorer.deps.json"; DestDir: "{app}"; Flags: ignoreversion
+Source: "Q:\VisualStudio\ZerachExplorer\ZerachExplorer\LiteExplorer\bin\Debug\net6.0-windows\LiteExplorer.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "Q:\VisualStudio\ZerachExplorer\ZerachExplorer\LiteExplorer\bin\Debug\net6.0-windows\LiteExplorer.pdb"; DestDir: "{app}"; Flags: ignoreversion
+Source: "Q:\VisualStudio\ZerachExplorer\ZerachExplorer\LiteExplorer\bin\Debug\net6.0-windows\LiteExplorer.runtimeconfig.json"; DestDir: "{app}"; Flags: ignoreversion
+Source: "Q:\VisualStudio\ZerachExplorer\ZerachExplorer\LiteExplorer\bin\Debug\net6.0-windows\Microsoft.Extensions.DependencyInjection.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "Q:\VisualStudio\ZerachExplorer\ZerachExplorer\LiteExplorer\bin\Debug\net6.0-windows\Microsoft.Extensions.DependencyInjection.Abstractions.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "Q:\VisualStudio\ZerachExplorer\ZerachExplorer\LiteExplorer\bin\Debug\net6.0-windows\Wpf.Ui.dll"; DestDir: "{app}"; Flags: ignoreversion
 
 ; NOTE: Don't use "Flags: ignoreversion" on any shared system files
 

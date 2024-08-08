@@ -16,7 +16,7 @@ internal class MainWindowViewModel : ViewModel
 
     #region MainWindowTitle
 
-    private string mainWindowTitle = "זרח אקספלורר v1.3.0";
+    private string mainWindowTitle = "זרח אקספלורר";
 
     public string MainWindowTitle
     {
@@ -43,6 +43,7 @@ internal class MainWindowViewModel : ViewModel
     #endregion
 
     #region Commands
+
 
     #region CloseApp
 
