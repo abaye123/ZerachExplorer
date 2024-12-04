@@ -2,7 +2,7 @@
 ; SEE THE DOCUMENTATION FOR DETAILS ON CREATING INNO SETUP SCRIPT FILES!
 
 #define MyAppName "ZerachExplorer"
-#define MyAppVersion "1.3.3"
+#define MyAppVersion "1.4.0"
 #define MyAppPublisher "abaye"
 #define MyAppURL "https://www.abaye.co/"
 #define MyAppExeName "ZerachExplorer.exe"

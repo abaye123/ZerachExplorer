@@ -212,40 +212,51 @@ internal class TabContentViewModel : ViewModel, IDisposable
     {
         string path = p?.ToString();
 
-        if (path is null || Directory.Exists(path))
+        if (string.IsNullOrEmpty(path) || !File.Exists(path))
         {
-            TabPath = path;
+            MessageBox.Show("ניתן לשנות שם לקבצים בלבד", "שגיאה", MessageBoxButton.OK, MessageBoxImage.Error, MessageBoxResult.No, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
+            return;
+        }
 
+        try
+        {
+            var fileInfo = new FileInfo(path);
+            string currentFileName = Path.GetFileNameWithoutExtension(path);
+            string fileExtension = Path.GetExtension(path);
+
+            // פתיחת תיבת טקסט לבקשת שם חדש
+            string newFileName = Microsoft.VisualBasic.Interaction.InputBox(
+                "הכנס את השם חדש לקובץ:",
+                "שינוי שם הקובץ",
+                currentFileName
+            );
+
+            if (string.IsNullOrWhiteSpace(newFileName) || newFileName == currentFileName)
+            {
+                MessageBox.Show("שם הקובץ לא שונה", "שינוי שם", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            string newPath = Path.Combine(fileInfo.DirectoryName, newFileName + fileExtension);
+
+            // בדיקת אם הקובץ החדש קיים כבר
+            if (File.Exists(newPath))
+            {
+                MessageBox.Show("קובץ עם שם זה כבר קיים.", "שגיאה", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
+            File.Move(path, newPath);
+
+            MessageBox.Show("השם שונה בהצלחה", "שינוי שם", MessageBoxButton.OK, MessageBoxImage.Information);
             OpenTabPath();
         }
-        else if (File.Exists(path))
+        catch (Exception ex)
         {
-            try
-            {
-                var fileInfo = new FileInfo(path);
-
-                if (Array.IndexOf(allowedExtensions, fileInfo.Extension.ToLower()) >= 0)
-                {
-                    Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
-                }
-                else
-                {
-                    //MessageBox.Show("סוג הקובץ אינו נתמך.", "שגיאה", MessageBoxButton.OK, MessageBoxImage.Error);
-                    MessageBox.Show("סוג הקובץ אינו נתמך", "שגיאה", MessageBoxButton.OK, MessageBoxImage.Error, MessageBoxResult.No, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
-                }
-
-            }
-            catch (Win32Exception ex)
-            {
-                MessageBox.Show(ex.Message, $"Error: {ex.NativeErrorCode}", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
-        }
-        else
-        {
-            //Process.Start(new ProcessStartInfo($"https://www.google.com/?q={Uri.EscapeDataString(path)}") { UseShellExecute = true });
-            MessageBox.Show("ERROR", $"Error: {path}", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show($"שינוי השם נכשל: {ex.Message}", "שגיאה", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
+
 
     #endregion
 
@@ -332,6 +343,7 @@ internal class TabContentViewModel : ViewModel, IDisposable
         //RunCmd = new ActionCommand(OnRunCmdExecuted);
         OpenCmd = new ActionCommand(OnOpenCmdExecuted);
         DeleteCmd = new ActionCommand(onDeletePath);
+        RenameCmd = new ActionCommand(OnRenameCmdExecuted);
         //ChangeDesign = new ActionCommand(OnRunCmdExecuted);
         BackCmd = new ActionCommand(OnBackCmdExecuted, CanBackCmdExecute);
         BackHome = new ActionCommand(OnBackHomeExecuted);
@@ -393,35 +405,36 @@ internal class TabContentViewModel : ViewModel, IDisposable
     {
         if (TabPath == null)
         {
-            var driveCount = Directory.GetLogicalDrives().Length;
+            // חישוב מראש של מספר הכוננים המוצגים בלבד
+            var visibleDrives = DriveInfo.GetDrives()
+                .Where(drive => !IsExcludedDrive(drive))
+                .ToList();
+            var driveCount = visibleDrives.Count;
             int processedDrives = 0;
 
-            foreach (var drive in DriveInfo.GetDrives())
+            foreach (var drive in visibleDrives)
             {
-                if (drive.Name != "C:\\") // hide view c drive
+                if (worker.CancellationPending)
                 {
-                    if (worker.CancellationPending)
-                    {
-                        e.Cancel = true;
-                        return;
-                    }
-
-                    Application.Current.Dispatcher.Invoke(() =>
-                    {
-                        FileSystemObjects.Add(new FileSystemObject()
-                        {
-                            Image = FolderManager.GetImageSource(drive.RootDirectory.FullName, ItemState.Undefined),
-                            Name = GetDriveLabel(drive),
-                            Path = drive.Name,
-                            TotalSpace = drive.TotalSize,
-                            FreeSpace = drive.TotalFreeSpace,
-                            Size = drive.TotalSize - drive.TotalFreeSpace,
-                            Format = drive.DriveFormat.ToString(),
-                            Type = GetDriveFormat(drive)
-                        });
-
-                    }, DispatcherPriority.Background);
+                    e.Cancel = true;
+                    return;
                 }
+
+                Application.Current.Dispatcher.Invoke(() =>
+                {
+                    FileSystemObjects.Add(new FileSystemObject()
+                    {
+                        Image = FolderManager.GetImageSource(drive.RootDirectory.FullName, ItemState.Undefined),
+                        Name = GetDriveLabel(drive),
+                        Path = drive.Name,
+                        TotalSpace = drive.TotalSize,
+                        FreeSpace = drive.TotalFreeSpace,
+                        Size = drive.TotalSize - drive.TotalFreeSpace,
+                        Format = drive.DriveFormat.ToString(),
+                        Type = GetDriveFormat(drive)
+                    });
+                }, DispatcherPriority.Background);
+
                 processedDrives++;
                 worker.ReportProgress((int)((double)processedDrives / driveCount * 100));
             }
@@ -431,8 +444,9 @@ internal class TabContentViewModel : ViewModel, IDisposable
             try
             {
                 var entryCount = new DirectoryInfo(TabPath).EnumerateFileSystemInfos().Count();
-                // Make sure the path is not on the C drive
-                if (IsNotOnDriveC(TabPath) == true)
+
+                // בדיקה אם הנתיב אינו בכונן C או בכוננים שאינם מותרים
+                if (IsNotOnDriveC(TabPath))
                 {
                     int processedFiles = 0;
 
@@ -446,7 +460,6 @@ internal class TabContentViewModel : ViewModel, IDisposable
 
                         var directoryInfo = new DirectoryInfo(directory);
 
-                        // Skipping the file, if it is hidden
                         if ((directoryInfo.Attributes & FileAttributes.Hidden) == FileAttributes.Hidden)
                         {
                             processedFiles++;
@@ -461,18 +474,16 @@ internal class TabContentViewModel : ViewModel, IDisposable
                                 Image = FolderManager.GetImageSource(directory, ItemState.Undefined),
                                 Name = Path.GetFileName(directory),
                                 Path = directory,
-                                Size = 012345667658675846,
+                                Size = directoryInfo.EnumerateFiles("*", SearchOption.AllDirectories).Sum(f => f.Length),
                                 TotalSpace = 012345667658675846,
                                 FreeSpace = 012345667658675846,
                                 Format = directoryInfo.LastWriteTime.ToString()
                             });
-
                         }, DispatcherPriority.Background);
 
                         processedFiles++;
                         worker.ReportProgress((int)((double)processedFiles / entryCount * 100));
                     }
-
 
                     foreach (var file in Directory.EnumerateFiles(TabPath))
                     {
@@ -490,16 +501,6 @@ internal class TabContentViewModel : ViewModel, IDisposable
                             worker.ReportProgress((int)((double)processedFiles / entryCount * 100));
                             continue;
                         }
-
-
-                        // Preventing the display of files with disallowed extensions
-                        if (Array.IndexOf(allowedExtensions, fileInfo.Extension.ToLower()) < 0)
-                        {
-                            //processedFiles++;
-                            //worker.ReportProgress((int)((double)processedFiles / entryCount * 100));
-                            //continue;
-                        }
-
 
                         Application.Current.Dispatcher.Invoke(() =>
                         {
@@ -519,9 +520,15 @@ internal class TabContentViewModel : ViewModel, IDisposable
                         processedFiles++;
                         worker.ReportProgress((int)((double)processedFiles / entryCount * 100));
                     }
-
                 }
+                else
+                {
+                    MessageBox.Show($"Access denied\nהגישה נדחתה", "אין גישה", MessageBoxButton.OK, MessageBoxImage.Error, MessageBoxResult.No, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
 
+
+                    TabPath = null;
+                    //OnBackHomeExecuted(null);
+                }
             }
             catch (UnauthorizedAccessException ex)
             {
@@ -529,6 +536,25 @@ internal class TabContentViewModel : ViewModel, IDisposable
             }
         }
     }
+
+    // פונקציה שמסננת כוננים לא רצויים
+    private bool IsExcludedDrive(DriveInfo drive)
+    {
+        return drive.Name == "C:\\" ||
+               drive.VolumeLabel == "Otzar Hahochma" ||
+               File.Exists(Path.Combine(drive.RootDirectory.FullName, "otzar.exe"));
+    }
+
+    public bool IsNotOnDriveC(string path)
+    {
+        if (string.IsNullOrEmpty(path))
+            throw new ArgumentException("Path cannot be null or empty", nameof(path));
+
+        var root = Path.GetPathRoot(path);
+        var drive = new DriveInfo(root);
+        return !IsExcludedDrive(drive);
+    }
+
 
     private void worker_ProgressChanged(object sender, ProgressChangedEventArgs e)
     {
@@ -538,14 +564,6 @@ internal class TabContentViewModel : ViewModel, IDisposable
     private void worker_RunWorkerCompleted(object sender, RunWorkerCompletedEventArgs e)
     {
         if (e.Cancelled) OpenTabPath();
-    }
-
-    public bool IsNotOnDriveC(string path)
-    {
-        if (string.IsNullOrEmpty(path))
-            throw new ArgumentException("Path cannot be null or empty", nameof(path));
-
-        return !(path.StartsWith("C:", StringComparison.OrdinalIgnoreCase));
     }
 
 

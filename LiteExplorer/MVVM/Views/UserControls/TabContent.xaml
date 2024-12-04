@@ -71,7 +71,7 @@
                        Background="Transparent"
                        ToolTip="פתח את הנתיב המצוין" />
 
-            <ui:Button Grid.Column="4"
+            <!--ui:Button Grid.Column="4"
                        Command="{Binding ResetOtzariaCmd}"
                        CommandParameter="{Binding TabPath}"
                        Icon="HistoryDismiss32"
@@ -79,13 +79,13 @@
                        BorderBrush="Transparent"
                        Background="Transparent"
                        MaxHeight="38"
-                       ToolTip="מחיקת ההיסטוריה של תוכנת אוצריא" HorizontalAlignment="Right" VerticalAlignment="Stretch" />
+                       ToolTip="מחיקת ההיסטוריה של תוכנת אוצריא" HorizontalAlignment="Right" VerticalAlignment="Stretch" /-->
 
             <ui:Button Grid.Column="5"
                        Height="{Binding ActualWidth, RelativeSource={RelativeSource Self}}"
                        Command="{Binding OpenAboutCmd}"
                        CommandParameter="{Binding TabPath}"
-                       Icon="Settings32"
+                       Icon="Info24"
                        BorderBrush="Transparent"
                        Background="Transparent"
                        ToolTip="אודות והגדרות" HorizontalAlignment="Center" VerticalAlignment="Stretch" />
@@ -110,12 +110,12 @@
                     <MenuItem Command="{Binding DataContext.DeleteCmd, RelativeSource={RelativeSource AncestorType=UserControl}}"
                               CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=ListView}, Path=SelectedItem.Path}"
                               Header="מחק" />
-                    <MenuItem Command="{Binding DataContext.rename, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                    <MenuItem Command="{Binding DataContext.RenameCmd, RelativeSource={RelativeSource AncestorType=UserControl}}"
                               CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=ListView}, Path=SelectedItem.Path}"
                               Header="שינוי שם" />
-                    <MenuItem Command="{Binding DataContext.SafeRemoval, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                    <!--MenuItem Command="{Binding DataContext.SafeRemoval, RelativeSource={RelativeSource AncestorType=UserControl}}"
                               CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=ListView}, Path=SelectedItem.Path}"
-                              Header="הוצאה בטוחה של כונן" />
+                              Header="הוצאה בטוחה של כונן" /-->
                 </ContextMenu>
             </ListView.Resources>
 
