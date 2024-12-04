@@ -1,20 +1,20 @@
 ﻿LiteExplorer
-
+1.0.0.0
 
 winexe
 C#
 .cs
-Q:\VisualStudio\ZerachExplorer\ZerachExplorer\LiteExplorer\obj\Debug\net6.0-windows\
+q:\VisualStudio\ZerachExplorer\ZerachExplorer\LiteExplorer\obj\Debug\net6.0-windows\
 LiteExplorer
 none
 false
-TRACE;DEBUG;NET;NET6_0;NETCOREAPP
-Q:\VisualStudio\ZerachExplorer\ZerachExplorer\LiteExplorer\App.xaml
+TRACE;DEBUG;NET;NET6_0;NETCOREAPP;WINDOWS;WINDOWS7_0;NET5_0_OR_GREATER;NET6_0_OR_GREATER;NETCOREAPP3_0_OR_GREATER;NETCOREAPP3_1_OR_GREATER;WINDOWS7_0_OR_GREATER
+q:\VisualStudio\ZerachExplorer\ZerachExplorer\LiteExplorer\App.xaml
 3-608071032
 
-26963952703
+281863113631
 198-1810375455
 MVVM\Views\UserControls\TabContent.xaml;MVVM\Views\Windows\about.xaml;MVVM\Views\Windows\MainWindow.xaml;
 
-False
+True
 
