@@ -10,7 +10,7 @@ namespace LiteExplorer.Services;
 public interface IPathPolicy
 {
     /// <summary>
-    /// File extensions allowed for opening.
+    /// File extensions allowed for opening and copying.
     /// </summary>
     IReadOnlyCollection<string> AllowedExtensions { get; }
 
@@ -78,4 +78,29 @@ public interface IPathPolicy
     /// Validates whether renaming a file from oldPath to newPath is permitted.
     /// </summary>
     bool CanRename(string oldPath, string newPath, out string reason);
+
+    /// <summary>
+    /// Validates whether copying a file from sourcePath to destinationDirectory is permitted.
+    /// </summary>
+    bool CanCopyFile(string sourcePath, string destinationDirectory, out string reason);
+
+    /// <summary>
+    /// Validates whether moving a file from sourcePath to destinationDirectory is permitted.
+    /// </summary>
+    bool CanMoveFile(string sourcePath, string destinationDirectory, out string reason);
+
+    /// <summary>
+    /// Validates whether copying or moving an entire directory is permitted.
+    /// </summary>
+    bool CanTransferDirectory(string sourceDirectory, string destinationDirectory, bool isMove, out string reason);
+
+    /// <summary>
+    /// Validates whether creating a new directory inside parentDirectory is permitted.
+    /// </summary>
+    bool CanCreateDirectory(string parentDirectory, string newDirectoryName, out string reason);
+
+    /// <summary>
+    /// Validates whether ejecting the specified drive is permitted.
+    /// </summary>
+    bool CanEjectDrive(string drivePath, out string reason);
 }

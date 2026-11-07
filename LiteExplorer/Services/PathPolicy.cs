@@ -309,7 +309,6 @@ public class PathPolicy : IPathPolicy
         finalResolvedPath = path;
         reason = null;
 
-        // Resolve kernel-level path to verify destination against security policies.
         string canonicalPath = Interop.GetFinalPath(path);
         if (!string.IsNullOrWhiteSpace(canonicalPath) &&
             !string.Equals(canonicalPath, path, StringComparison.OrdinalIgnoreCase))
@@ -377,7 +376,6 @@ public class PathPolicy : IPathPolicy
         }
         catch
         {
-            // Treat unreadable paths as restricted.
             return true;
         }
         return false;
@@ -399,7 +397,6 @@ public class PathPolicy : IPathPolicy
         }
         catch
         {
-            // Treat unreadable ancestors as restricted.
             return true;
         }
         return false;
@@ -577,6 +574,158 @@ public class PathPolicy : IPathPolicy
         if (!string.Equals(oldExt, newExt, StringComparison.OrdinalIgnoreCase))
         {
             reason = "חל איסור על שינוי סיומת הקובץ.";
+            return false;
+        }
+
+        return true;
+    }
+
+    public bool CanCopyFile(string sourcePath, string destinationDirectory, out string reason)
+    {
+        if (!CanOpenFile(sourcePath, out reason))
+            return false;
+
+        if (!CanNavigate(destinationDirectory, out reason))
+            return false;
+
+        string fileName = Path.GetFileName(sourcePath);
+        if (string.IsNullOrWhiteSpace(fileName))
+        {
+            reason = "שם הקובץ אינו תקין.";
+            return false;
+        }
+
+        string destinationFile = Path.Combine(destinationDirectory, fileName);
+        if (!TryNormalizePath(destinationFile, out string fullDest, out reason))
+            return false;
+
+        if (!ValidateLocation(fullDest, out reason))
+            return false;
+
+        return true;
+    }
+
+    public bool CanMoveFile(string sourcePath, string destinationDirectory, out string reason)
+    {
+        if (!CanDelete(sourcePath, out reason))
+            return false;
+
+        return CanCopyFile(sourcePath, destinationDirectory, out reason);
+    }
+
+    public bool CanTransferDirectory(string sourceDirectory, string destinationDirectory, bool isMove, out string reason)
+    {
+        if (!CanNavigate(sourceDirectory, out reason))
+            return false;
+
+        if (!CanNavigate(destinationDirectory, out reason))
+            return false;
+
+        if (isMove && !CanDelete(sourceDirectory, out reason))
+            return false;
+
+        string dirName = Path.GetFileName(sourceDirectory.TrimEnd('\\', '/'));
+        if (string.IsNullOrWhiteSpace(dirName))
+        {
+            reason = "לא ניתן להעביר או להעתיק שורש כונן.";
+            return false;
+        }
+
+        string targetDir = Path.Combine(destinationDirectory, dirName);
+        if (!TryNormalizePath(targetDir, out string fullTarget, out reason))
+            return false;
+
+        if (!ValidateLocation(fullTarget, out reason))
+            return false;
+
+        string normSource = EnsureTrailingSeparator(Path.GetFullPath(sourceDirectory));
+        string normDest = EnsureTrailingSeparator(Path.GetFullPath(destinationDirectory));
+        if (normDest.StartsWith(normSource, StringComparison.OrdinalIgnoreCase))
+        {
+            reason = "לא ניתן להעתיק או להעביר תיקייה אל תוך עצמה.";
+            return false;
+        }
+
+        return true;
+    }
+
+    public bool CanCreateDirectory(string parentDirectory, string newDirectoryName, out string reason)
+    {
+        reason = null;
+        if (string.IsNullOrWhiteSpace(newDirectoryName))
+        {
+            reason = "שם התיקייה אינו יכול להיות ריק.";
+            return false;
+        }
+
+        string trimmedName = newDirectoryName.Trim();
+        if (trimmedName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 ||
+            trimmedName.Contains('/') ||
+            trimmedName.Contains('\\') ||
+            trimmedName.Contains(".."))
+        {
+            reason = "שם התיקייה מכיל תווים שאינם חוקיים.";
+            return false;
+        }
+
+        if (ReservedDeviceNames.Contains(trimmedName))
+        {
+            reason = "שם התיקייה הוא שם שמור של מערכת ההפעלה.";
+            return false;
+        }
+
+        if (!CanNavigate(parentDirectory, out reason))
+            return false;
+
+        string target = Path.Combine(parentDirectory, trimmedName);
+        if (!TryNormalizePath(target, out string fullTarget, out reason))
+            return false;
+
+        if (!ValidateLocation(fullTarget, out reason))
+            return false;
+
+        return true;
+    }
+
+    public bool CanEjectDrive(string drivePath, out string reason)
+    {
+        reason = null;
+        if (string.IsNullOrWhiteSpace(drivePath))
+        {
+            reason = "נתיב הכונן ריק.";
+            return false;
+        }
+
+        string root = Path.GetPathRoot(drivePath);
+        if (string.IsNullOrWhiteSpace(root) || root.Length < 2)
+        {
+            reason = "אות הכונן אינה תקינה.";
+            return false;
+        }
+
+        root = EnsureTrailingSeparator(root);
+
+        if (string.Equals(root, SystemDriveRoot, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(root, @"C:\", StringComparison.OrdinalIgnoreCase))
+        {
+            reason = "לא ניתן להוציא את כונן המערכת (C:).";
+            return false;
+        }
+
+        DriveInfo drive;
+        try
+        {
+            drive = new DriveInfo(root);
+        }
+        catch (Exception ex)
+        {
+            reason = $"שגיאה בגישה לכונן: {ex.Message}";
+            return false;
+        }
+
+        if (drive.DriveType != DriveType.Removable && !AllowedDriveRoots.Contains(root))
+        {
+            reason = "ניתן להוציא כוננים נשלפים (USB) בלבד.";
             return false;
         }
 
