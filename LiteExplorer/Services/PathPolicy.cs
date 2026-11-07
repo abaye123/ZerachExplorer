@@ -87,11 +87,6 @@ public class PathPolicy : IPathPolicy
             return false;
         }
 
-        if (!drive.IsReady)
-        {
-            reason = "הכונן אינו מוכן לשימוש (יתכן שאין מדיה בהתקן).";
-            return false;
-        }
 
         string driveRoot;
         try
@@ -111,6 +106,12 @@ public class PathPolicy : IPathPolicy
             return false;
         }
 
+        bool isExplicitlyAllowed = AllowedDriveRoots.Contains(driveRoot) || AllowedDriveRoots.Contains(drive.Name);
+        if (!drive.IsReady && !isExplicitlyAllowed)
+        {
+            reason = "הכונן אינו מוכן לשימוש (יתכן שאין מדיה בהתקן).";
+            return false;
+        }
         try
         {
             if (!string.IsNullOrWhiteSpace(drive.VolumeLabel))
