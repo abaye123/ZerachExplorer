@@ -116,6 +116,9 @@
                     <MenuItem Command="{Binding DataContext.RenameCmd, RelativeSource={RelativeSource AncestorType=UserControl}}"
                               CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=ListView}, Path=SelectedItem.Path}"
                               Header="שינוי שם" />
+                    <MenuItem Command="{Binding DataContext.CalculateFolderSizeCmd, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                              CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=ListView}, Path=SelectedItem}"
+                              Header="חשב גודל תיקייה" />
                     <!--MenuItem Command="{Binding DataContext.SafeRemoval, RelativeSource={RelativeSource AncestorType=UserControl}}"
                               CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=ListView}, Path=SelectedItem.Path}"
                               Header="הוצאה בטוחה של כונן" /-->
