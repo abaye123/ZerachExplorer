@@ -1,4 +1,5 @@
 using LiteExplorer.MVVM.ViewModels.Base;
+using System;
 using System.Windows.Media;
 
 namespace LiteExplorer.MVVM.Models;
@@ -73,6 +74,13 @@ internal class FileSystemObject : ViewModel
     {
         get => lastWriteTime;
         set => SetValue(ref lastWriteTime, value);
+    }
+
+    private DateTime? rawLastWriteTime;
+    public DateTime? RawLastWriteTime
+    {
+        get => rawLastWriteTime;
+        set => SetValue(ref rawLastWriteTime, value);
     }
 
     private bool isDirectory;
