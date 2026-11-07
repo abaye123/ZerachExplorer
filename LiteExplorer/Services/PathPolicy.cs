@@ -244,7 +244,6 @@ public class PathPolicy : IPathPolicy
         return IsDriveAllowed(drive, out reason);
     }
 
-    // 3.3 Deep Reparse Point, Junction and Symlink resolution and target verification
     private bool ValidateReparsePoint(string path, out string finalResolvedPath, out string reason)
     {
         finalResolvedPath = path;
@@ -305,9 +304,134 @@ public class PathPolicy : IPathPolicy
         return true;
     }
 
-    public bool CanNavigate(string path, out string reason) => throw new NotImplementedException();
-    public bool CanListDirectory(string directoryPath, out string reason) => throw new NotImplementedException();
-    public bool CanListFile(string filePath, out string reason) => throw new NotImplementedException();
+    // 3.2 Hidden and system attributes validation
+    private static bool HasHiddenOrSystemAttribute(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+            {
+                var attr = File.GetAttributes(path);
+                return (attr & (FileAttributes.Hidden | FileAttributes.System)) != 0;
+            }
+            if (Directory.Exists(path))
+            {
+                var attr = File.GetAttributes(path);
+                return (attr & (FileAttributes.Hidden | FileAttributes.System)) != 0;
+            }
+        }
+        catch
+        {
+            return true;
+        }
+        return false;
+    }
+
+    private static bool HasHiddenOrSystemAncestor(string path)
+    {
+        try
+        {
+            var dir = new DirectoryInfo(path);
+            while (dir != null && dir.Parent != null)
+            {
+                if ((dir.Attributes & (FileAttributes.Hidden | FileAttributes.System)) != 0)
+                {
+                    return true;
+                }
+                dir = dir.Parent;
+            }
+        }
+        catch
+        {
+            return true;
+        }
+        return false;
+    }
+
+    public bool CanNavigate(string path, out string reason)
+    {
+        if (!TryNormalizePath(path, out string fullPath, out reason))
+            return false;
+
+        if (!ValidateLocation(fullPath, out reason))
+            return false;
+
+        if (!ValidateReparsePoint(fullPath, out string resolvedPath, out reason))
+            return false;
+
+        if (!string.Equals(fullPath, resolvedPath, StringComparison.OrdinalIgnoreCase))
+        {
+            if (!ValidateLocation(resolvedPath, out reason))
+                return false;
+        }
+
+        if (HasHiddenOrSystemAttribute(resolvedPath) || HasHiddenOrSystemAncestor(resolvedPath))
+        {
+            reason = "הגישה לתיקיות מוסתרות או תיקיות מערכת חסומה.";
+            return false;
+        }
+
+        return true;
+    }
+
+    public bool CanListDirectory(string directoryPath, out string reason)
+    {
+        reason = null;
+        try
+        {
+            var di = new DirectoryInfo(directoryPath);
+            if ((di.Attributes & (FileAttributes.Hidden | FileAttributes.System)) != 0)
+            {
+                reason = "תיקייה מוסתרת.";
+                return false;
+            }
+
+            if ((di.Attributes & FileAttributes.ReparsePoint) == FileAttributes.ReparsePoint)
+            {
+                if (!ValidateReparsePoint(directoryPath, out _, out reason))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = ex.Message;
+            return false;
+        }
+    }
+
+    public bool CanListFile(string filePath, out string reason)
+    {
+        reason = null;
+        try
+        {
+            var fi = new FileInfo(filePath);
+            if ((fi.Attributes & (FileAttributes.Hidden | FileAttributes.System)) != 0)
+            {
+                reason = "קובץ מוסתר או קובץ מערכת.";
+                return false;
+            }
+
+            if ((fi.Attributes & FileAttributes.ReparsePoint) == FileAttributes.ReparsePoint)
+            {
+                if (!ValidateReparsePoint(filePath, out _, out reason))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            reason = ex.Message;
+            return false;
+        }
+    }
+
     public bool CanOpenFile(string filePath, out string reason) => throw new NotImplementedException();
     public bool CanDelete(string path, out string reason) => throw new NotImplementedException();
     public bool CanRename(string oldPath, string newPath, out string reason) => throw new NotImplementedException();
