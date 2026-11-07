@@ -23,6 +23,8 @@ namespace LiteExplorer.MVVM.ViewModels;
 
 internal class TabContentViewModel : ViewModel, IDisposable
 {
+    private const long NotApplicableSpaceSentinel = 12345667658675846L;
+
     #region Private fields
 
     private readonly IPathPolicy pathPolicy;
@@ -34,22 +36,14 @@ internal class TabContentViewModel : ViewModel, IDisposable
 
     #region Properties
 
-    #region TabTitle
-
     private string tabTitle;
-
     public string TabTitle
     {
         get => tabTitle;
         set => SetValue(ref tabTitle, value);
     }
 
-    #endregion
-
-    #region TabPath
-
     private string tabPath;
-
     public string TabPath
     {
         get => tabPath;
@@ -61,55 +55,33 @@ internal class TabContentViewModel : ViewModel, IDisposable
         }
     }
 
-    #endregion
-
-    #region TabCommand
-
     private string tabCommand;
-
     public string TabCommand
     {
         get => tabCommand;
         set => SetValue(ref tabCommand, value);
     }
 
-    #endregion
-
-    #region CurrentFileSystemObject
-
     private FileSystemObject currentFileSystemObject;
-
     public FileSystemObject CurrentFileSystemObject
     {
         get => currentFileSystemObject;
         set => SetValue(ref currentFileSystemObject, value);
     }
 
-    #endregion
-
-    #region ProgressPercent
-
     private double progressPercent;
-
     public double ProgressPercent
     {
         get => progressPercent;
         set => SetValue(ref progressPercent, value);
     }
 
-    #endregion
-
-    #region IsLoading
-
     private bool isLoading;
-
     public bool IsLoading
     {
         get => isLoading;
         set => SetValue(ref isLoading, value);
     }
-
-    #endregion
 
     public ObservableCollection<FileSystemObject> FileSystemObjects { get; set; } = new();
 
@@ -117,21 +89,55 @@ internal class TabContentViewModel : ViewModel, IDisposable
 
     #region Commands
 
-    #region Run
-
     public ICommand RunCmd { get; }
+    public ICommand OpenCmd { get; }
+    public ICommand DeleteCmd { get; }
+    public ICommand RenameCmd { get; }
+    public ICommand CalculateFolderSizeCmd { get; }
+    public ICommand BackCmd { get; }
+    public ICommand BackHome { get; }
+    public ICommand ResetOtzariaCmd { get; }
+    public ICommand OpenAboutCmd { get; }
 
     #endregion
 
-    #region Open
+    #region Constructor & Disposal
 
-    public ICommand OpenCmd { get; }
+    public TabContentViewModel(IPathPolicy pathPolicy = null)
+    {
+        this.pathPolicy = pathPolicy ?? App.Container?.GetService<IPathPolicy>() ?? new PathPolicy();
+
+        OpenCmd = new ActionCommand(OnOpenCmdExecuted);
+        DeleteCmd = new ActionCommand(OnDeletePath);
+        RenameCmd = new ActionCommand(OnRenameCmdExecuted);
+        BackCmd = new ActionCommand(OnBackCmdExecuted, CanBackCmdExecute);
+        BackHome = new ActionCommand(OnBackHomeExecuted);
+        CalculateFolderSizeCmd = new ActionCommand(OnCalculateFolderSizeExecuted);
+        ResetOtzariaCmd = new ActionCommand(OnResetOtzariaCmdExecuted);
+        OpenAboutCmd = new ActionCommand(OnOpenAboutCmdExecuted);
+
+        OpenCmd.Execute(TabPath);
+    }
+
+    public void Dispose()
+    {
+        lock (scanLock)
+        {
+            currentScanCts?.Cancel();
+            currentScanCts?.Dispose();
+            currentScanCts = null;
+        }
+    }
+
+    #endregion
+
+    #region Command Handlers
 
     private void OnOpenCmdExecuted(object p)
     {
         string rawPath = p?.ToString()?.Trim();
 
-        // If no path is provided, navigate to Home (Drives list)
+        // Navigate to Drives list if no path is specified.
         if (string.IsNullOrEmpty(rawPath))
         {
             TabPath = null;
@@ -139,7 +145,6 @@ internal class TabContentViewModel : ViewModel, IDisposable
             return;
         }
 
-        // 3.2 Verify all navigation and open operations against PathPolicy
         if (Directory.Exists(rawPath))
         {
             if (!pathPolicy.CanNavigate(rawPath, out var reason))
@@ -181,20 +186,13 @@ internal class TabContentViewModel : ViewModel, IDisposable
         }
     }
 
-    #endregion
-
-    #region Delete
-
-    public ICommand DeleteCmd { get; }
-
-    private void onDeletePath(object p)
+    private void OnDeletePath(object p)
     {
         string rawPath = p?.ToString()?.Trim();
 
         if (string.IsNullOrWhiteSpace(rawPath))
             return;
 
-        // 3.6 Robust validation: Block drive deletion and verify path policy
         if (!pathPolicy.CanDelete(rawPath, out var deleteReason))
         {
             MessageBox.Show(deleteReason, "שגיאה במחיקה", MessageBoxButton.OK, MessageBoxImage.Warning, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
@@ -221,7 +219,7 @@ internal class TabContentViewModel : ViewModel, IDisposable
             return;
         }
 
-        // Count contents and check for hidden/system files before recursive delete
+        // Count contents and check for hidden/system items before deletion.
         int fileCount = 0;
         int dirCount = 0;
         int hiddenCount = 0;
@@ -246,7 +244,6 @@ internal class TabContentViewModel : ViewModel, IDisposable
             }
             catch
             {
-                // Inaccessible subfolder or count error - proceed cautiously
             }
         }
 
@@ -276,7 +273,6 @@ internal class TabContentViewModel : ViewModel, IDisposable
         if (result != MessageBoxResult.Yes)
             return;
 
-        // 3.6 Send to Recycle Bin instead of permanent recursive wipeout
         try
         {
             if (isDirectory)
@@ -301,7 +297,7 @@ internal class TabContentViewModel : ViewModel, IDisposable
         {
             CrashLogger.LogException(ex, $"Recycle bin delete failed for: {fullPath}");
 
-            // If drive does not support Recycle Bin (e.g. FAT32 USB), ask explicit confirmation
+            // Prompt user if Recycle Bin is unsupported on the target volume.
             var fallbackResult = MessageBox.Show(
                 $"לא ניתן היה להעביר את הפריט לסל המיחזור ({ex.Message}).\nהאם ברצונך למחוק לצמיתות את הפריט?",
                 "אזהרת מחיקה לצמיתות",
@@ -331,12 +327,6 @@ internal class TabContentViewModel : ViewModel, IDisposable
         }
     }
 
-    #endregion
-
-    #region Rename
-
-    public ICommand RenameCmd { get; }
-
     private void OnRenameCmdExecuted(object p)
     {
         string rawPath = p?.ToString()?.Trim();
@@ -347,7 +337,6 @@ internal class TabContentViewModel : ViewModel, IDisposable
             return;
         }
 
-        // 3.5 Verify that user is allowed to access/rename this file
         if (!pathPolicy.CanOpenFile(rawPath, out var checkReason))
         {
             MessageBox.Show($"לא ניתן לשנות שם לקובץ זה:\n{checkReason}", "גישה נדחתה", MessageBoxButton.OK, MessageBoxImage.Warning, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
@@ -360,7 +349,6 @@ internal class TabContentViewModel : ViewModel, IDisposable
             string currentFileName = Path.GetFileNameWithoutExtension(fileInfo.FullName);
             string fileExtension = fileInfo.Extension;
 
-            // Prompt user for new file name
             string newFileName = Microsoft.VisualBasic.Interaction.InputBox(
                 "הכנס את השם החדש לקובץ:",
                 "שינוי שם הקובץ",
@@ -377,7 +365,7 @@ internal class TabContentViewModel : ViewModel, IDisposable
                 return;
             }
 
-            // 3.5 Prevent Path Traversal in Rename
+            // Validate new filename to prevent path traversal.
             char[] invalidChars = Path.GetInvalidFileNameChars();
             if (newFileName.IndexOfAny(invalidChars) >= 0 ||
                 newFileName.Contains('/') ||
@@ -391,14 +379,12 @@ internal class TabContentViewModel : ViewModel, IDisposable
             string combinedName = newFileName + fileExtension;
             string newPath = Path.Combine(fileInfo.DirectoryName, combinedName);
 
-            // Verify directory remains identical
             if (!string.Equals(Path.GetDirectoryName(newPath), fileInfo.DirectoryName, StringComparison.OrdinalIgnoreCase))
             {
                 MessageBox.Show("ניסיון לעקוף נתיב (Path Traversal) זוהה ונחסם.", "אבטחה", MessageBoxButton.OK, MessageBoxImage.Error, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
                 return;
             }
 
-            // Validate against policy
             if (!pathPolicy.CanRename(fileInfo.FullName, newPath, out var renameReason))
             {
                 MessageBox.Show(renameReason, "שגיאת מדיניות", MessageBoxButton.OK, MessageBoxImage.Error, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
@@ -422,12 +408,6 @@ internal class TabContentViewModel : ViewModel, IDisposable
             MessageBox.Show($"שינוי השם נכשל: {ex.Message}", "שגיאה", MessageBoxButton.OK, MessageBoxImage.Error, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
         }
     }
-
-    #endregion
-
-    #region CalculateFolderSize
-
-    public ICommand CalculateFolderSizeCmd { get; }
 
     private async void OnCalculateFolderSizeExecuted(object p)
     {
@@ -506,18 +486,11 @@ internal class TabContentViewModel : ViewModel, IDisposable
             }
             catch
             {
-                // Return accumulated size on unexpected error
             }
 
             return size;
         }, token);
     }
-
-    #endregion
-
-    #region Back
-
-    public ICommand BackCmd { get; }
 
     private bool CanBackCmdExecute(object p) => TabPath != null;
 
@@ -532,36 +505,17 @@ internal class TabContentViewModel : ViewModel, IDisposable
         }
         else
         {
-            if (pathPolicy.CanNavigate(parent, out _))
-            {
-                TabPath = parent;
-            }
-            else
-            {
-                TabPath = null;
-            }
+            TabPath = pathPolicy.CanNavigate(parent, out _) ? parent : null;
         }
 
         OpenTabPath();
     }
-
-    #endregion
-
-    #region BackHome
-
-    public ICommand BackHome { get; }
 
     private void OnBackHomeExecuted(object p)
     {
         TabPath = null;
         OpenTabPath();
     }
-
-    #endregion
-
-    #region ResetOtzaria
-
-    public ICommand ResetOtzariaCmd { get; }
 
     private void OnResetOtzariaCmdExecuted(object p)
     {
@@ -572,57 +526,18 @@ internal class TabContentViewModel : ViewModel, IDisposable
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), @"com.example\otzaria\bookmarks.isar")
         };
 
-        string result = DeleteFiles(filesToDelete);
-        Console.WriteLine(result);
+        DeleteFiles(filesToDelete);
     }
-
-    #endregion
-
-    #region OpenAbout
-
-    public ICommand OpenAboutCmd { get; }
 
     private void OnOpenAboutCmdExecuted(object p)
     {
-        about aboutForm = new about();
-        aboutForm.ShowDialog();
+        var aboutWindow = new about();
+        aboutWindow.ShowDialog();
     }
 
     #endregion
 
-    #endregion
-
-    #region Constructor
-
-    public TabContentViewModel(IPathPolicy pathPolicy = null)
-    {
-        this.pathPolicy = pathPolicy ?? App.Container?.GetService<IPathPolicy>() ?? new PathPolicy();
-
-        OpenCmd = new ActionCommand(OnOpenCmdExecuted);
-        DeleteCmd = new ActionCommand(onDeletePath);
-        RenameCmd = new ActionCommand(OnRenameCmdExecuted);
-        BackCmd = new ActionCommand(OnBackCmdExecuted, CanBackCmdExecute);
-        BackHome = new ActionCommand(OnBackHomeExecuted);
-        CalculateFolderSizeCmd = new ActionCommand(OnCalculateFolderSizeExecuted);
-        ResetOtzariaCmd = new ActionCommand(OnResetOtzariaCmdExecuted);
-        OpenAboutCmd = new ActionCommand(OnOpenAboutCmdExecuted);
-
-        OpenCmd.Execute(TabPath);
-    }
-
-    public void Dispose()
-    {
-        lock (scanLock)
-        {
-            currentScanCts?.Cancel();
-            currentScanCts?.Dispose();
-            currentScanCts = null;
-        }
-    }
-
-    #endregion
-
-    #region Private methods
+    #region Private Directory Loading
 
     private void OpenTabPath()
     {
@@ -677,7 +592,6 @@ internal class TabContentViewModel : ViewModel, IDisposable
             {
                 if (targetPath == null)
                 {
-                    // 3.7 Whitelist drive enumeration
                     var visibleDrives = pathPolicy.GetAllowedDrives().ToList();
                     var driveCount = visibleDrives.Count;
                     int processedDrives = 0;
@@ -718,7 +632,6 @@ internal class TabContentViewModel : ViewModel, IDisposable
                         }
                         catch
                         {
-                            // Skip drive if error occurs
                         }
 
                         processedDrives++;
@@ -740,7 +653,6 @@ internal class TabContentViewModel : ViewModel, IDisposable
                 }
                 else
                 {
-                    // Verify navigation permission inside worker task
                     if (!pathPolicy.CanNavigate(targetPath, out var navReason))
                     {
                         await DispatchOnUiThreadAsync(() =>
@@ -788,9 +700,9 @@ internal class TabContentViewModel : ViewModel, IDisposable
                             Image = FolderManager.GetImageSource(directory, ItemState.Undefined),
                             Name = directoryInfo.Name,
                             Path = directory,
-                            Size = 0, // Lazy/On-demand folder size to avoid freezing UI
-                            TotalSpace = 012345667658675846,
-                            FreeSpace = 012345667658675846,
+                            Size = 0,
+                            TotalSpace = NotApplicableSpaceSentinel,
+                            FreeSpace = NotApplicableSpaceSentinel,
                             Format = directoryInfo.LastWriteTime.ToString(),
                             LastWriteTime = directoryInfo.LastWriteTime.ToString(),
                             IsDirectory = true
@@ -831,8 +743,8 @@ internal class TabContentViewModel : ViewModel, IDisposable
                             Format = fileInfo.LastWriteTime.ToString(),
                             CreationTime = fileInfo.CreationTime.ToString(),
                             LastWriteTime = fileInfo.LastWriteTime.ToString(),
-                            TotalSpace = 012345667658675846,
-                            FreeSpace = 012345667658675846,
+                            TotalSpace = NotApplicableSpaceSentinel,
+                            FreeSpace = NotApplicableSpaceSentinel,
                             IsDirectory = false
                         });
 
@@ -857,7 +769,6 @@ internal class TabContentViewModel : ViewModel, IDisposable
                         }
                     }
 
-                    // Flush remaining items in batch
                     if (batch.Count > 0)
                     {
                         var remainingBatch = batch.ToList();
@@ -877,7 +788,6 @@ internal class TabContentViewModel : ViewModel, IDisposable
         }
         catch (OperationCanceledException)
         {
-            // Operation cleanly cancelled by a newer request or tab navigation
             return;
         }
         catch (UnauthorizedAccessException ex)
@@ -929,7 +839,6 @@ internal class TabContentViewModel : ViewModel, IDisposable
         }
         catch (OperationCanceledException)
         {
-            // Ignore cancellation
         }
     }
 
@@ -966,7 +875,6 @@ internal class TabContentViewModel : ViewModel, IDisposable
 
     private static string DeleteFiles(List<string> filePaths)
     {
-        var successList = new List<string>();
         var failureList = new List<string>();
 
         foreach (var filePath in filePaths)
@@ -976,7 +884,6 @@ internal class TabContentViewModel : ViewModel, IDisposable
                 if (File.Exists(filePath))
                 {
                     File.Delete(filePath);
-                    successList.Add(filePath);
                 }
             }
             catch (Exception ex)
@@ -985,14 +892,9 @@ internal class TabContentViewModel : ViewModel, IDisposable
             }
         }
 
-        if (failureList.Any())
-        {
-            return $"לא ניתן היה למחוק חלק מהקבצים:\n{string.Join("\n", failureList)}";
-        }
-        else
-        {
-            return "success";
-        }
+        return failureList.Any()
+            ? $"לא ניתן היה למחוק חלק מהקבצים:\n{string.Join("\n", failureList)}"
+            : "success";
     }
 
     #endregion

@@ -71,16 +71,6 @@
                        Background="Transparent"
                        ToolTip="פתח את הנתיב המצוין" />
 
-            <!--ui:Button Grid.Column="4"
-                       Command="{Binding ResetOtzariaCmd}"
-                       CommandParameter="{Binding TabPath}"
-                       Icon="HistoryDismiss32"
-                       Content="מחיקת היסטוריית אוצריא"
-                       BorderBrush="Transparent"
-                       Background="Transparent"
-                       MaxHeight="38"
-                       ToolTip="מחיקת ההיסטוריה של תוכנת אוצריא" HorizontalAlignment="Right" VerticalAlignment="Stretch" /-->
-
             <ui:Button Grid.Column="5"
                        Height="{Binding ActualWidth, RelativeSource={RelativeSource Self}}"
                        Command="{Binding OpenAboutCmd}"
@@ -119,9 +109,6 @@
                     <MenuItem Command="{Binding DataContext.CalculateFolderSizeCmd, RelativeSource={RelativeSource AncestorType=UserControl}}"
                               CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=ListView}, Path=SelectedItem}"
                               Header="חשב גודל תיקייה" />
-                    <!--MenuItem Command="{Binding DataContext.SafeRemoval, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                              CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=ListView}, Path=SelectedItem.Path}"
-                              Header="הוצאה בטוחה של כונן" /-->
                 </ContextMenu>
             </ListView.Resources>
 
@@ -191,17 +178,6 @@
                         <Label Grid.Column="5"
                                Content="{Binding FreeSpace, Converter={StaticResource BytesToNormalSizeConverter}}"
                                Foreground="Green" FlowDirection="LeftToRight" FontSize="13"/>
-                        <!-- ProgressBar x:Name="usedPercent"
-                                     Grid.Column="6"
-                                     Background="{Binding Value, RelativeSource={RelativeSource Self}, Converter={StaticResource PercentToColorConverter}}"
-                                     Foreground="Gray">
-                            <ProgressBar.Value>
-                                <MultiBinding Converter="{StaticResource UsedPercentConverter}">
-                                    <Binding Path="TotalSpace" />
-                                    <Binding Path="Size" />
-                                </MultiBinding>
-                            </ProgressBar.Value>
-                        </ProgressBar -->
                     </Grid>
                 </DataTemplate>
             </ListView.ItemTemplate>

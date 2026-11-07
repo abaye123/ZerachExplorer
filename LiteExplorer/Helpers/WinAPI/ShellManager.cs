@@ -1,11 +1,11 @@
-﻿using LiteExplorer.Helpers.Enums;
+using LiteExplorer.Helpers.Enums;
 using System;
 using System.Drawing;
 using System.Runtime.InteropServices;
 
 namespace LiteExplorer.Helpers.WinAPI;
 
-public class ShellManager
+public static class ShellManager
 {
     public static Icon GetIcon(string path, ItemType type, IconSize iconSize, ItemState state)
     {
@@ -24,16 +24,12 @@ public class ShellManager
         var size = (uint)Marshal.SizeOf(fileInfo);
         var result = Interop.SHGetFileInfo(path, attributes, out fileInfo, size, flags);
 
-        if (result == IntPtr.Zero)
-            throw Marshal.GetExceptionForHR(Marshal.GetHRForLastWin32Error());
+        if (result == IntPtr.Zero || fileInfo.hIcon == IntPtr.Zero)
+            return null;
 
         try
         {
             return (Icon)Icon.FromHandle(fileInfo.hIcon).Clone();
-        }
-        catch
-        {
-            throw;
         }
         finally
         {

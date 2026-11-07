@@ -27,10 +27,8 @@ public partial class App
 
     private void SetupExceptionHandling()
     {
-        // 4.3 Global WPF Dispatcher unhandled exceptions
         DispatcherUnhandledException += OnDispatcherUnhandledException;
 
-        // Non-UI thread unhandled exceptions
         AppDomain.CurrentDomain.UnhandledException += (sender, args) =>
         {
             if (args.ExceptionObject is Exception ex)
@@ -39,7 +37,6 @@ public partial class App
             }
         };
 
-        // Unobserved background task exceptions
         TaskScheduler.UnobservedTaskException += (sender, args) =>
         {
             CrashLogger.LogException(args.Exception, "TaskScheduler.UnobservedTaskException");
@@ -58,10 +55,8 @@ public partial class App
         }
         catch
         {
-            // Ignore UI failure during fatal error dialog
         }
 
-        // Prevent immediate hard crash where possible
         e.Handled = true;
     }
 

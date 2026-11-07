@@ -51,7 +51,7 @@ public static class CrashLogger
         }
         catch
         {
-            // Fail silently to prevent crashing inside the crash handler
+            // Suppress secondary exceptions inside the crash handler.
         }
     }
 
@@ -74,7 +74,6 @@ public static class CrashLogger
         }
         catch
         {
-            // Fail silently
         }
     }
 
