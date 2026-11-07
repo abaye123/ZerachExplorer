@@ -1,158 +1,476 @@
 using LiteExplorer.Helpers;
+
 using LiteExplorer.Helpers.Enums;
+
 using LiteExplorer.Helpers.WinAPI;
+
 using LiteExplorer.Infrastructure.Commands;
+
+using LiteExplorer.Infrastructure.Converters;
+
 using LiteExplorer.MVVM.Models;
+
 using LiteExplorer.MVVM.ViewModels.Base;
+
 using LiteExplorer.MVVM.Views.Windows;
+
 using LiteExplorer.Services;
+
 using Microsoft.Extensions.DependencyInjection;
+
 using System;
+
 using System.Collections.Generic;
+
 using System.Collections.ObjectModel;
+
 using System.ComponentModel;
+
 using System.Diagnostics;
+
 using System.IO;
+
 using System.Linq;
+
 using System.Threading;
+
 using System.Threading.Tasks;
+
 using System.Windows;
+
+using System.Windows.Data;
+
 using System.Windows.Input;
+
+using System.Windows.Media.Imaging;
+
 using System.Windows.Threading;
+
+
 
 namespace LiteExplorer.MVVM.ViewModels;
 
+
+
 internal class TabContentViewModel : ViewModel, IDisposable
+
 {
+
     private const long NotApplicableSpaceSentinel = 12345667658675846L;
+
+
 
     #region Private fields
 
+
+
     private readonly IPathPolicy pathPolicy;
+
     private readonly IDriveEjectService driveEjectService;
+
     private readonly object scanLock = new();
+
     private CancellationTokenSource currentScanCts;
+
     private long currentScanId;
 
+
+
     private static readonly List<string> InternalClipboard = new();
+
     private static bool IsClipboardCut = false;
+
     private readonly List<FileSystemObject> selectedFileSystemObjects = new();
 
+
+
+    private FileSystemWatcher currentWatcher;
+
+    private readonly DispatcherTimer refreshDebounceTimer;
+
+
+
     #endregion
+
+
 
     #region Properties
 
+
+
     private string tabTitle;
+
     public string TabTitle
+
     {
+
         get => tabTitle;
+
         set => SetValue(ref tabTitle, value);
+
     }
+
+
 
     private string tabPath;
+
     public string TabPath
+
     {
+
         get => tabPath;
+
         set
+
         {
+
             if (SetValue(ref tabPath, value))
+
             {
+
                 TabCommand = tabPath;
+                UpdateBreadcrumbs(tabPath);
+
                 InvalidateCommandStates();
+
             }
+
         }
+
     }
+
+
 
     private string tabCommand;
+
     public string TabCommand
+
     {
+
         get => tabCommand;
+
         set => SetValue(ref tabCommand, value);
+
     }
+
+
 
     private FileSystemObject currentFileSystemObject;
+
     public FileSystemObject CurrentFileSystemObject
+
     {
+
         get => currentFileSystemObject;
+
         set
+
         {
+
             if (SetValue(ref currentFileSystemObject, value))
+
             {
+
                 InvalidateCommandStates();
+
+                if (IsPreviewPaneVisible)
+
+                {
+
+                    LoadPreview(currentFileSystemObject);
+
+                }
+
             }
+
         }
+
     }
+
+
 
     private double progressPercent;
+
     public double ProgressPercent
+
     {
+
         get => progressPercent;
+
         set => SetValue(ref progressPercent, value);
+
     }
+
+
 
     private bool isLoading;
+
     public bool IsLoading
+
     {
+
         get => isLoading;
+
         set => SetValue(ref isLoading, value);
+
     }
 
+
+
     public ObservableCollection<FileSystemObject> FileSystemObjects { get; set; } = new();
+
     public IReadOnlyList<FileSystemObject> SelectedFileSystemObjects => selectedFileSystemObjects;
 
+
+
+    public ObservableCollection<BreadcrumbItem> Breadcrumbs { get; } = new();
+
+
+
+    private bool isAddressBarEditing;
+
+    public bool IsAddressBarEditing
+
+    {
+
+        get => isAddressBarEditing;
+
+        set => SetValue(ref isAddressBarEditing, value);
+
+    }
+
+
+
+    private string searchText = string.Empty;
+
+    public string SearchText
+
+    {
+
+        get => searchText;
+
+        set
+
+        {
+
+            if (SetValue(ref searchText, value))
+
+            {
+
+                ApplyFilter();
+
+            }
+
+        }
+
+    }
+
+
+
+    public SortColumn CurrentSortColumn { get; private set; } = SortColumn.Name;
+
+    public ListSortDirection CurrentSortDirection { get; private set; } = ListSortDirection.Ascending;
+
+
+
+    public FilePreviewInfo PreviewInfo { get; } = new();
+
+
+
+    private bool isPreviewPaneVisible;
+
+    public bool IsPreviewPaneVisible
+
+    {
+
+        get => isPreviewPaneVisible;
+
+        set
+
+        {
+
+            if (SetValue(ref isPreviewPaneVisible, value))
+
+            {
+
+                if (value)
+
+                {
+
+                    LoadPreview(CurrentFileSystemObject);
+
+                }
+
+                else
+
+                {
+
+                    PreviewInfo.Clear();
+
+                }
+
+            }
+
+        }
+
+    }
+
+
+
     #endregion
+
+
 
     #region Commands
 
+
+
     public ICommand RunCmd { get; }
+
     public ICommand OpenCmd { get; }
+
     public ICommand DeleteCmd { get; }
+
     public ICommand RenameCmd { get; }
+
     public ICommand CalculateFolderSizeCmd { get; }
+
     public ICommand BackCmd { get; }
+
     public ICommand BackHome { get; }
+
     public ICommand ResetOtzariaCmd { get; }
+
     public ICommand OpenAboutCmd { get; }
+
     public ICommand CopyCmd { get; }
+
     public ICommand CutCmd { get; }
+
     public ICommand PasteCmd { get; }
+
     public ICommand CreateDirectoryCmd { get; }
+
     public ICommand EjectDriveCmd { get; }
+
+    public ICommand NavigateBreadcrumbCmd { get; }
+
+    public ICommand ToggleAddressBarEditCmd { get; }
+
+    public ICommand ClearSearchCmd { get; }
+
+    public ICommand TogglePreviewPaneCmd { get; }
+
+    public ICommand RefreshCmd { get; }
+
+
 
     #endregion
 
+
+
     #region Constructor & Disposal
 
+
+
     public TabContentViewModel(IPathPolicy pathPolicy = null, IDriveEjectService driveEjectService = null)
+
     {
+
         this.pathPolicy = pathPolicy ?? App.Container?.GetService<IPathPolicy>() ?? new PathPolicy();
+
         this.driveEjectService = driveEjectService ?? App.Container?.GetService<IDriveEjectService>() ?? new DriveEjectService(this.pathPolicy);
 
+
+
         OpenCmd = new ActionCommand(OnOpenCmdExecuted);
+
         DeleteCmd = new ActionCommand(OnDeletePath, CanDeleteExecute);
+
         RenameCmd = new ActionCommand(OnRenameCmdExecuted, CanRenameExecute);
+
         BackCmd = new ActionCommand(OnBackCmdExecuted, CanBackCmdExecute);
+
         BackHome = new ActionCommand(OnBackHomeExecuted);
+
         CalculateFolderSizeCmd = new ActionCommand(OnCalculateFolderSizeExecuted);
+
         ResetOtzariaCmd = new ActionCommand(OnResetOtzariaCmdExecuted);
+
         OpenAboutCmd = new ActionCommand(OnOpenAboutCmdExecuted);
+
         CopyCmd = new ActionCommand(OnCopyCmdExecuted, CanCopyExecute);
+
         CutCmd = new ActionCommand(OnCutCmdExecuted, CanCutExecute);
+
         PasteCmd = new ActionCommand(OnPasteCmdExecuted, CanPasteExecute);
+
         CreateDirectoryCmd = new ActionCommand(OnCreateDirectoryCmdExecuted, CanCreateDirectoryExecute);
+
         EjectDriveCmd = new ActionCommand(OnEjectDriveCmdExecuted, CanEjectDriveExecute);
 
+        NavigateBreadcrumbCmd = new ActionCommand(OnNavigateBreadcrumbExecuted);
+
+        ToggleAddressBarEditCmd = new ActionCommand(_ => IsAddressBarEditing = !IsAddressBarEditing);
+
+        ClearSearchCmd = new ActionCommand(_ => SearchText = string.Empty);
+
+        TogglePreviewPaneCmd = new ActionCommand(_ => IsPreviewPaneVisible = !IsPreviewPaneVisible);
+
+        RefreshCmd = new ActionCommand(_ => OpenCmd.Execute(TabPath));
+
+
+
+        refreshDebounceTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(350) };
+
+        refreshDebounceTimer.Tick += (s, e) =>
+
+        {
+
+            refreshDebounceTimer.Stop();
+
+            OpenCmd.Execute(TabPath);
+
+        };
+
+
+
+        DeviceNotificationService.Instance.DeviceChanged += OnDeviceNotification;
+
+
+
+        UpdateBreadcrumbs(TabPath);
+
         OpenCmd.Execute(TabPath);
+
     }
 
+
+
     public void Dispose()
+
     {
+
+        DeviceNotificationService.Instance.DeviceChanged -= OnDeviceNotification;
+
+        StopWatcher();
+
+        refreshDebounceTimer?.Stop();
+
+
+
         lock (scanLock)
+
         {
+
             currentScanCts?.Cancel();
+
             currentScanCts?.Dispose();
+
             currentScanCts = null;
+
         }
+
     }
 
     #endregion
@@ -1160,6 +1478,9 @@ internal class TabContentViewModel : ViewModel, IDisposable
             TabTitle = string.IsNullOrEmpty(targetPath) ? "בית" : Path.GetFileName(targetPath);
         }
 
+        UpdateBreadcrumbs(targetPath);
+        StartWatcher(targetPath);
+
         FileSystemObjects.Clear();
         ProgressPercent = 0;
         IsLoading = true;
@@ -1289,6 +1610,7 @@ internal class TabContentViewModel : ViewModel, IDisposable
                             FreeSpace = NotApplicableSpaceSentinel,
                             Format = directoryInfo.LastWriteTime.ToString(),
                             LastWriteTime = directoryInfo.LastWriteTime.ToString(),
+                            RawLastWriteTime = directoryInfo.LastWriteTime,
                             IsDirectory = true
                         });
 
@@ -1327,6 +1649,7 @@ internal class TabContentViewModel : ViewModel, IDisposable
                             Format = fileInfo.LastWriteTime.ToString(),
                             CreationTime = fileInfo.CreationTime.ToString(),
                             LastWriteTime = fileInfo.LastWriteTime.ToString(),
+                            RawLastWriteTime = fileInfo.LastWriteTime,
                             TotalSpace = NotApplicableSpaceSentinel,
                             FreeSpace = NotApplicableSpaceSentinel,
                             IsDirectory = false
@@ -1374,6 +1697,17 @@ internal class TabContentViewModel : ViewModel, IDisposable
         {
             return;
         }
+        catch (Exception ex) when (ex is IOException or DriveNotFoundException or DirectoryNotFoundException)
+        {
+            CrashLogger.LogMessage($"Device or directory disconnected when navigating to {targetPath}: {ex.Message}", "WARN");
+            await DispatchOnUiThreadAsync(() =>
+            {
+                if (scanId != Interlocked.Read(ref currentScanId)) return;
+                MessageBox.Show($"הכונן או התיקייה אינם זמינים (יתכן שההתקן נותק):\n{ex.Message}", "שגיאה בגישה לכונן", MessageBoxButton.OK, MessageBoxImage.Warning, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
+                TabPath = null;
+                OpenTabPath();
+            });
+        }
         catch (UnauthorizedAccessException ex)
         {
             CrashLogger.LogMessage($"Unauthorized access when navigating to {targetPath}: {ex.Message}", "WARN");
@@ -1404,6 +1738,12 @@ internal class TabContentViewModel : ViewModel, IDisposable
                 {
                     IsLoading = false;
                     ProgressPercent = 100;
+                    ApplySorting();
+                    ApplyFilter();
+                    if (IsPreviewPaneVisible)
+                    {
+                        LoadPreview(CurrentFileSystemObject);
+                    }
                 });
             }
         }
@@ -1482,4 +1822,626 @@ internal class TabContentViewModel : ViewModel, IDisposable
     }
 
     #endregion
+
+    #region Phase 4 Helpers: Breadcrumbs, Filter, Sort, Preview, Auto-Refresh
+
+
+
+    private void UpdateBreadcrumbs(string path)
+
+    {
+
+        Breadcrumbs.Clear();
+
+        Breadcrumbs.Add(new BreadcrumbItem
+
+        {
+
+            Name = "בית",
+
+            Path = string.Empty,
+
+            IsLast = string.IsNullOrEmpty(path)
+
+        });
+
+
+
+        if (string.IsNullOrEmpty(path))
+
+            return;
+
+
+
+        string root = Path.GetPathRoot(path);
+
+        if (string.IsNullOrEmpty(root))
+
+            return;
+
+
+
+        string rootLabel = root;
+
+        try
+
+        {
+
+            var drive = new DriveInfo(root);
+
+            rootLabel = GetDriveLabel(drive);
+
+        }
+
+        catch { }
+
+
+
+        bool isRootOnly = string.Equals(root.TrimEnd('\\', '/'), path.TrimEnd('\\', '/'), StringComparison.OrdinalIgnoreCase);
+
+
+
+        Breadcrumbs.Add(new BreadcrumbItem
+
+        {
+
+            Name = rootLabel,
+
+            Path = root,
+
+            IsLast = isRootOnly
+
+        });
+
+
+
+        if (isRootOnly)
+
+            return;
+
+
+
+        string sub = path.Substring(root.Length).Trim('\\', '/');
+
+        if (string.IsNullOrEmpty(sub))
+
+            return;
+
+
+
+        string[] parts = sub.Split(new[] { '\\', '/' }, StringSplitOptions.RemoveEmptyEntries);
+
+        string currentAccumulated = root.TrimEnd('\\', '/');
+
+
+
+        for (int i = 0; i < parts.Length; i++)
+
+        {
+
+            currentAccumulated = Path.Combine(currentAccumulated, parts[i]);
+
+            Breadcrumbs.Add(new BreadcrumbItem
+
+            {
+
+                Name = parts[i],
+
+                Path = currentAccumulated,
+
+                IsLast = (i == parts.Length - 1)
+
+            });
+
+        }
+
+    }
+
+
+
+    private void OnNavigateBreadcrumbExecuted(object p)
+
+    {
+
+        string path = p as string;
+
+        OpenCmd.Execute(path);
+
+    }
+
+
+
+    private void ApplyFilter()
+
+    {
+
+        var view = CollectionViewSource.GetDefaultView(FileSystemObjects);
+
+        if (view == null) return;
+
+
+
+        if (string.IsNullOrWhiteSpace(searchText))
+
+        {
+
+            view.Filter = null;
+
+        }
+
+        else
+
+        {
+
+            string query = searchText.Trim();
+
+            view.Filter = item =>
+
+            {
+
+                if (item is FileSystemObject fso && fso.Name != null)
+
+                {
+
+                    return fso.Name.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0;
+
+                }
+
+                return true;
+
+            };
+
+        }
+
+    }
+
+
+
+    public void SortByColumn(string columnTag)
+
+    {
+
+        if (!Enum.TryParse<SortColumn>(columnTag, true, out var col))
+
+            return;
+
+
+
+        if (CurrentSortColumn == col)
+
+        {
+
+            CurrentSortDirection = CurrentSortDirection == ListSortDirection.Ascending
+
+                ? ListSortDirection.Descending
+
+                : ListSortDirection.Ascending;
+
+        }
+
+        else
+
+        {
+
+            CurrentSortColumn = col;
+
+            CurrentSortDirection = ListSortDirection.Ascending;
+
+        }
+
+
+
+        ApplySorting();
+
+        OnPropertyChanged(nameof(CurrentSortColumn));
+
+        OnPropertyChanged(nameof(CurrentSortDirection));
+
+    }
+
+
+
+    private void ApplySorting()
+
+    {
+
+        if (CollectionViewSource.GetDefaultView(FileSystemObjects) is ListCollectionView view)
+
+        {
+
+            view.CustomSort = new FileSystemObjectComparer(CurrentSortColumn, CurrentSortDirection);
+
+        }
+
+    }
+
+
+
+    private void StartWatcher(string path)
+
+    {
+
+        StopWatcher();
+
+
+
+        if (string.IsNullOrEmpty(path) || !Directory.Exists(path))
+
+            return;
+
+
+
+        try
+
+        {
+
+            currentWatcher = new FileSystemWatcher(path)
+
+            {
+
+                NotifyFilter = NotifyFilters.FileName | NotifyFilters.DirectoryName | NotifyFilters.LastWrite | NotifyFilters.Size,
+
+                IncludeSubdirectories = false,
+
+                EnableRaisingEvents = true
+
+            };
+
+            currentWatcher.Created += OnDirectoryChanged;
+
+            currentWatcher.Deleted += OnDirectoryChanged;
+
+            currentWatcher.Renamed += OnDirectoryRenamed;
+
+            currentWatcher.Changed += OnDirectoryChanged;
+
+            currentWatcher.Error += OnWatcherError;
+
+        }
+
+        catch (Exception ex)
+
+        {
+
+            CrashLogger.LogMessage($"FileSystemWatcher could not start on {path}: {ex.Message}", "INFO");
+
+        }
+
+    }
+
+
+
+    private void StopWatcher()
+
+    {
+
+        if (currentWatcher != null)
+
+        {
+
+            try
+
+            {
+
+                currentWatcher.EnableRaisingEvents = false;
+
+                currentWatcher.Created -= OnDirectoryChanged;
+
+                currentWatcher.Deleted -= OnDirectoryChanged;
+
+                currentWatcher.Renamed -= OnDirectoryRenamed;
+
+                currentWatcher.Changed -= OnDirectoryChanged;
+
+                currentWatcher.Error -= OnWatcherError;
+
+                currentWatcher.Dispose();
+
+            }
+
+            catch { }
+
+            finally
+
+            {
+
+                currentWatcher = null;
+
+            }
+
+        }
+
+    }
+
+
+
+    private void OnDirectoryChanged(object sender, FileSystemEventArgs e) => TriggerDebouncedRefresh();
+
+    private void OnDirectoryRenamed(object sender, RenamedEventArgs e) => TriggerDebouncedRefresh();
+
+
+
+    private void OnWatcherError(object sender, ErrorEventArgs e)
+
+    {
+
+        StopWatcher();
+
+    }
+
+
+
+    private void TriggerDebouncedRefresh()
+
+    {
+
+        Application.Current?.Dispatcher?.InvokeAsync(() =>
+
+        {
+
+            refreshDebounceTimer.Stop();
+
+            refreshDebounceTimer.Start();
+
+        });
+
+    }
+
+
+
+    private void OnDeviceNotification(object sender, EventArgs e)
+
+    {
+
+        Application.Current?.Dispatcher?.InvokeAsync(() =>
+
+        {
+
+            if (string.IsNullOrEmpty(TabPath))
+
+            {
+
+                OpenCmd.Execute(null);
+
+            }
+
+            else
+
+            {
+
+                try
+
+                {
+
+                    string root = Path.GetPathRoot(TabPath);
+
+                    if (string.IsNullOrEmpty(root) || !Directory.Exists(root) || !new DriveInfo(root).IsReady)
+
+                    {
+
+                        MessageBox.Show("הכונן נותק מהמחשב. חוזר לתצוגת הבית.", "התקן נותק", MessageBoxButton.OK, MessageBoxImage.Information, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
+
+                        BackHome.Execute(null);
+
+                    }
+
+                }
+
+                catch
+
+                {
+
+                    BackHome.Execute(null);
+
+                }
+
+            }
+
+        });
+
+    }
+
+
+
+    private async void LoadPreview(FileSystemObject item)
+
+    {
+
+        if (item == null || string.IsNullOrEmpty(item.Path))
+
+        {
+
+            PreviewInfo.Clear();
+
+            return;
+
+        }
+
+
+
+        PreviewInfo.FileName = item.Name;
+
+        PreviewInfo.FilePath = item.Path;
+
+        PreviewInfo.LastModifiedFormatted = item.LastWriteTime;
+
+        PreviewInfo.IconPreview = item.Image;
+
+
+
+        if (item.IsDirectory)
+
+        {
+
+            PreviewInfo.Type = PreviewType.Directory;
+
+            PreviewInfo.FileSizeFormatted = item.Size > 0 ? BytesToNormalSize.FormatBytes(item.Size) : "תיקייה";
+
+            PreviewInfo.StatusMessage = "תיקייה";
+
+            PreviewInfo.TextContent = null;
+
+            PreviewInfo.ImagePreview = null;
+
+            return;
+
+        }
+
+
+
+        PreviewInfo.FileSizeFormatted = BytesToNormalSize.FormatBytes(item.Size);
+
+        string ext = Path.GetExtension(item.Path)?.ToLowerInvariant() ?? string.Empty;
+
+
+
+        // Text files
+
+        if (ext is ".txt" or ".csv" or ".log" or ".json" or ".xml" or ".ini" or ".md" or ".config" or ".yml" or ".yaml")
+
+        {
+
+            PreviewInfo.IsLoading = true;
+
+            PreviewInfo.Type = PreviewType.Text;
+
+            PreviewInfo.ImagePreview = null;
+
+            try
+
+            {
+
+                string text = await Task.Run(() =>
+
+                {
+
+                    using var stream = new FileStream(item.Path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+
+                    using var reader = new StreamReader(stream);
+
+                    char[] buffer = new char[65536];
+
+                    int charsRead = reader.Read(buffer, 0, buffer.Length);
+
+                    return new string(buffer, 0, charsRead);
+
+                });
+
+                PreviewInfo.TextContent = text;
+
+                PreviewInfo.StatusMessage = $"מוצגים {text.Length} תווים ראשונים";
+
+            }
+
+            catch (Exception ex)
+
+            {
+
+                PreviewInfo.StatusMessage = "שגיאה בקריאת הקובץ: " + ex.Message;
+
+                PreviewInfo.Type = PreviewType.Document;
+
+            }
+
+            finally
+
+            {
+
+                PreviewInfo.IsLoading = false;
+
+            }
+
+            return;
+
+        }
+
+
+
+        // Image files
+
+        if (ext is ".png" or ".jpg" or ".jpeg" or ".bmp" or ".ico")
+
+        {
+
+            PreviewInfo.IsLoading = true;
+
+            PreviewInfo.Type = PreviewType.Image;
+
+            PreviewInfo.TextContent = null;
+
+            try
+
+            {
+
+                var bmp = await Task.Run(() =>
+
+                {
+
+                    var img = new BitmapImage();
+
+                    img.BeginInit();
+
+                    img.CacheOption = BitmapCacheOption.OnLoad;
+
+                    img.UriSource = new Uri(item.Path);
+
+                    img.DecodePixelWidth = 800;
+
+                    img.EndInit();
+
+                    img.Freeze();
+
+                    return img;
+
+                });
+
+                PreviewInfo.ImagePreview = bmp;
+
+                PreviewInfo.StatusMessage = "תמונה";
+
+            }
+
+            catch
+
+            {
+
+                PreviewInfo.StatusMessage = "לא ניתן לטעון תצוגה מקדימה לתמונה";
+
+                PreviewInfo.Type = PreviewType.Document;
+
+            }
+
+            finally
+
+            {
+
+                PreviewInfo.IsLoading = false;
+
+            }
+
+            return;
+
+        }
+
+
+
+        // Office & PDF documents
+
+        PreviewInfo.Type = PreviewType.Document;
+
+        PreviewInfo.TextContent = null;
+
+        PreviewInfo.ImagePreview = null;
+
+        PreviewInfo.StatusMessage = "קובץ מסמך (דאבל קליק לפתיחה ביישום ברירת מחדל)";
+
+    }
+
+
+
+    #endregion
+
+
+
 }
+
