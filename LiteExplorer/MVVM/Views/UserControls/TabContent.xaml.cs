@@ -13,6 +13,7 @@ public partial class TabContent
     {
         InitializeComponent();
         items.SelectionChanged += OnItemsSelectionChanged;
+        tilesList.SelectionChanged += OnItemsSelectionChanged;
     }
 
     private void OnItemsSelectionChanged(object sender, SelectionChangedEventArgs e)

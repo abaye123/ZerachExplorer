@@ -363,6 +363,29 @@ internal class TabContentViewModel : ViewModel, IDisposable
 
     public ICommand RefreshCmd { get; }
 
+    public ICommand ToggleViewModeCmd { get; }
+
+    public ICommand ResetSessionCmd { get; }
+
+    private ViewMode currentViewMode = ViewMode.Details;
+
+    public ViewMode CurrentViewMode
+    {
+        get => currentViewMode;
+        set
+        {
+            if (SetValue(ref currentViewMode, value))
+            {
+                OnPropertyChanged(nameof(IsDetailsView));
+                OnPropertyChanged(nameof(IsTilesView));
+            }
+        }
+    }
+
+    public bool IsDetailsView => CurrentViewMode == ViewMode.Details;
+
+    public bool IsTilesView => CurrentViewMode == ViewMode.Tiles;
+
 
 
     #endregion
@@ -419,6 +442,12 @@ internal class TabContentViewModel : ViewModel, IDisposable
 
         RefreshCmd = new ActionCommand(_ => OpenCmd.Execute(TabPath));
 
+        ToggleViewModeCmd = new ActionCommand(_ => CurrentViewMode = CurrentViewMode == ViewMode.Details ? ViewMode.Tiles : ViewMode.Details);
+
+        ResetSessionCmd = new ActionCommand(_ => SessionService.Instance.ResetSession());
+
+        SessionService.Instance.SessionReset += OnSessionReset;
+
 
 
         refreshDebounceTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(350) };
@@ -452,6 +481,8 @@ internal class TabContentViewModel : ViewModel, IDisposable
     {
 
         DeviceNotificationService.Instance.DeviceChanged -= OnDeviceNotification;
+
+        SessionService.Instance.SessionReset -= OnSessionReset;
 
         StopWatcher();
 
@@ -922,7 +953,9 @@ internal class TabContentViewModel : ViewModel, IDisposable
         {
             try
             {
-                Directory.CreateDirectory(Path.Combine(TabPath, createdFolderName));
+                string createdPath = Path.Combine(TabPath, createdFolderName);
+                Directory.CreateDirectory(createdPath);
+                AuditService.Instance.Log(AuditEventType.DirectoryCreated, createdPath, "Created directory", true);
                 OpenTabPath();
             }
             catch (Exception ex)
@@ -956,6 +989,7 @@ internal class TabContentViewModel : ViewModel, IDisposable
         }
 
         bool success = driveEjectService.EjectDrive(targetDrive, out string message);
+        AuditService.Instance.Log(AuditEventType.DriveEjected, targetDrive, message, success);
         MessageBox.Show(
             message,
             "הוצאת התקן USB",
@@ -1001,6 +1035,7 @@ internal class TabContentViewModel : ViewModel, IDisposable
         {
             if (!pathPolicy.CanOpenFile(rawPath, out var reason))
             {
+                AuditService.Instance.Log(AuditEventType.SecurityBlocked, rawPath, reason, false);
                 MessageBox.Show(reason, "גישה נדחתה", MessageBoxButton.OK, MessageBoxImage.Warning, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
                 return;
             }
@@ -1009,6 +1044,7 @@ internal class TabContentViewModel : ViewModel, IDisposable
             {
                 var fullFilePath = Path.GetFullPath(rawPath);
                 Process.Start(new ProcessStartInfo(fullFilePath) { UseShellExecute = true });
+                AuditService.Instance.Log(AuditEventType.FileOpened, fullFilePath, "File opened in default application", true);
             }
             catch (Win32Exception ex)
             {
@@ -2188,6 +2224,16 @@ internal class TabContentViewModel : ViewModel, IDisposable
     }
 
 
+
+    private void OnSessionReset(object sender, EventArgs e)
+    {
+        Application.Current?.Dispatcher?.InvokeAsync(() =>
+        {
+            SearchText = string.Empty;
+            PreviewInfo.Clear();
+            OpenCmd.Execute(null);
+        });
+    }
 
     private void OnDeviceNotification(object sender, EventArgs e)
 

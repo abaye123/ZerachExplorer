@@ -27,6 +27,7 @@
         <KeyBinding Command="{Binding RenameCmd}" CommandParameter="{Binding CurrentFileSystemObject.Path}" Key="F2" />
         <KeyBinding Command="{Binding RefreshCmd}" Key="F5" />
         <KeyBinding Command="{Binding TogglePreviewPaneCmd}" Modifiers="Alt" Key="P" />
+        <KeyBinding Command="{Binding ToggleViewModeCmd}" Modifiers="Ctrl+Shift" Key="V" />
     </UserControl.InputBindings>
 
     <Grid>
@@ -294,6 +295,7 @@
 
             <!-- File List -->
             <ListView x:Name="items"
+                      Visibility="{Binding IsDetailsView, Converter={StaticResource BoolToVisibilityConverter}}"
                       Grid.Column="0"
                       FlowDirection="RightToLeft"
                       ItemsSource="{Binding FileSystemObjects}"
@@ -441,6 +443,44 @@
                     </GridView>
                 </ListView.View>
             </ListView>
+
+            <!-- Tiles / Large Icons View -->
+            <ListBox x:Name="tilesList"
+                     Grid.Column="0"
+                     FlowDirection="RightToLeft"
+                     ItemsSource="{Binding FileSystemObjects}"
+                     SelectedItem="{Binding CurrentFileSystemObject}"
+                     SelectionMode="Extended"
+                     Visibility="{Binding IsTilesView, Converter={StaticResource BoolToVisibilityConverter}}"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                <ListBox.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <WrapPanel Orientation="Horizontal" />
+                    </ItemsPanelTemplate>
+                </ListBox.ItemsPanel>
+                <ListBox.ItemContainerStyle>
+                    <Style TargetType="ListBoxItem">
+                        <EventSetter Event="MouseDoubleClick" Handler="OnListViewItemDoubleClick" />
+                    </Style>
+                </ListBox.ItemContainerStyle>
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <Border Width="110" Height="100" Margin="6" Padding="6" CornerRadius="6" Background="Transparent">
+                            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <Image Source="{Binding Image}" Width="48" Height="48" HorizontalAlignment="Center" Margin="0,0,0,6" />
+                                <TextBlock Text="{Binding Name}" 
+                                           HorizontalAlignment="Center" 
+                                           TextAlignment="Center" 
+                                           FontSize="12" 
+                                           TextWrapping="Wrap" 
+                                           MaxHeight="36" 
+                                           TextTrimming="CharacterEllipsis" 
+                                           Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                            </StackPanel>
+                        </Border>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
 
             <!-- Splitter between List and Preview -->
             <GridSplitter Grid.Column="1"
