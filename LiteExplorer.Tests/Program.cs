@@ -339,6 +339,10 @@ public class Program
 
         testVm.Dispose();
 
+        // Stage 5 - Section 4.1 & 4.3: Modernization & CommunityToolkit.Mvvm verification
+        Assert(Environment.Version.Major >= 8, ".NET Runtime is version 8 or higher");
+        Assert(typeof(LiteExplorer.MVVM.ViewModels.Base.ViewModel).IsSubclassOf(typeof(CommunityToolkit.Mvvm.ComponentModel.ObservableObject)), "ViewModel inherits from CommunityToolkit.Mvvm ObservableObject");
+
         Console.WriteLine($"\nTest Results: {passed} passed, {failed} failed.");
         return failed == 0 ? 0 : 1;
     }

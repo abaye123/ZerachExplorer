@@ -373,7 +373,7 @@ internal class TabContentViewModel : ViewModel, IDisposable
 
 
 
-    public TabContentViewModel(IPathPolicy pathPolicy = null, IDriveEjectService driveEjectService = null)
+    public TabContentViewModel(IPathPolicy? pathPolicy = null, IDriveEjectService? driveEjectService = null)
 
     {
 

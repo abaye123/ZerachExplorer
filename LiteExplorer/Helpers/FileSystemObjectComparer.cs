@@ -24,7 +24,7 @@ internal class FileSystemObjectComparer : IComparer
         this.direction = direction;
     }
 
-    public int Compare(object x, object y)
+    public int Compare(object? x, object? y)
     {
         if (ReferenceEquals(x, y)) return 0;
         if (x is not FileSystemObject itemA) return -1;
