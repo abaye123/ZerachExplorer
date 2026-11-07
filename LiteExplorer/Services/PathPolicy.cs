@@ -1,4 +1,4 @@
-using LiteExplorer.Helpers.WinAPI;
+﻿using LiteExplorer.Helpers.WinAPI;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -13,7 +13,7 @@ public class PathPolicy : IPathPolicy
         ".doc", ".docx", ".xls", ".xlsx", ".pdf", ".txt", ".csv", ".one", ".onetoc2"
     };
 
-    private static readonly string[] ReservedDeviceNames = new[]
+    private static readonly HashSet<string> ReservedDeviceNames = new(StringComparer.OrdinalIgnoreCase)
     {
         "CON", "PRN", "AUX", "NUL",
         "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
@@ -34,7 +34,7 @@ public class PathPolicy : IPathPolicy
     {
         "Otzar Hahochma",
         "Otzar",
-        "אוצר החוכמה"
+        "׳׳•׳¦׳¨ ׳”׳—׳•׳›׳׳”"
     };
 
     public ISet<string> BlockedVolumeSerialNumbers { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -73,7 +73,7 @@ public class PathPolicy : IPathPolicy
     private static string EnsureTrailingSeparator(string path)
     {
         if (string.IsNullOrWhiteSpace(path)) return path;
-        return path.EndsWith(Path.DirectorySeparatorChar.ToString()) || path.EndsWith(Path.AltDirectorySeparatorChar.ToString())
+        return path.EndsWith(Path.DirectorySeparatorChar) || path.EndsWith(Path.AltDirectorySeparatorChar)
             ? path
             : path + Path.DirectorySeparatorChar;
     }
@@ -83,29 +83,34 @@ public class PathPolicy : IPathPolicy
         reason = null;
         if (drive == null)
         {
-            reason = "הכונן אינו קיים.";
+            reason = "׳”׳›׳•׳ ׳ ׳׳™׳ ׳• ׳§׳™׳™׳.";
             return false;
         }
 
-        // 4.1 Prevent crash when checking unready drives (CD-ROM, empty card readers)
         if (!drive.IsReady)
         {
-            reason = "הכונן אינו מוכן לשימוש (יתכן שאין מדיה בהתקן).";
+            reason = "׳”׳›׳•׳ ׳ ׳׳™׳ ׳• ׳׳•׳›׳ ׳׳©׳™׳׳•׳© (׳™׳×׳›׳ ׳©׳׳™׳ ׳׳“׳™׳” ׳‘׳”׳×׳§׳).";
             return false;
         }
 
-        string driveRoot = EnsureTrailingSeparator(drive.RootDirectory?.FullName ?? drive.Name);
+        string driveRoot;
+        try
+        {
+            driveRoot = EnsureTrailingSeparator(drive.RootDirectory?.FullName ?? drive.Name);
+        }
+        catch
+        {
+            driveRoot = EnsureTrailingSeparator(drive.Name);
+        }
 
-        // 3.1 Dynamic system drive detection and case-insensitive check
         if (string.Equals(driveRoot, SystemDriveRoot, StringComparison.OrdinalIgnoreCase) ||
             string.Equals(drive.Name, @"C:\", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(driveRoot, @"C:\", StringComparison.OrdinalIgnoreCase))
         {
-            reason = "הגישה לכונן המערכת (C:) חסומה מטעמי אבטחה.";
+            reason = "׳”׳’׳™׳©׳” ׳׳›׳•׳ ׳ ׳”׳׳¢׳¨׳›׳× (C:) ׳—׳¡׳•׳׳” ׳׳˜׳¢׳׳™ ׳׳‘׳˜׳—׳”.";
             return false;
         }
 
-        // Check blocked volume labels (e.g. Otzar Hahochma)
         try
         {
             if (!string.IsNullOrWhiteSpace(drive.VolumeLabel))
@@ -113,49 +118,43 @@ public class PathPolicy : IPathPolicy
                 var label = drive.VolumeLabel.Trim();
                 if (BlockedVolumeLabels.Contains(label) ||
                     label.IndexOf("Otzar", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                    label.Contains("אוצר החוכמה"))
+                    label.Contains("׳׳•׳¦׳¨ ׳”׳—׳•׳›׳׳”"))
                 {
-                    reason = "הגישה לכונני תוכנת 'אוצר החוכמה' חסומה.";
+                    reason = "׳”׳’׳™׳©׳” ׳׳›׳•׳ ׳ ׳™ ׳×׳•׳›׳ ׳× '׳׳•׳¦׳¨ ׳”׳—׳•׳›׳׳”' ׳—׳¡׳•׳׳”.";
                     return false;
                 }
             }
         }
         catch
         {
-            // If reading VolumeLabel fails, continue safely
         }
 
-        // Check physical markers on disk for Otzar Hahochma
         try
         {
             if (File.Exists(Path.Combine(driveRoot, "otzar.exe")) ||
                 File.Exists(Path.Combine(driveRoot, "Otzar.exe")) ||
                 Directory.Exists(Path.Combine(driveRoot, "Otzar")))
             {
-                reason = "הגישה לכונני תוכנת 'אוצר החוכמה' חסומה.";
+                reason = "׳”׳’׳™׳©׳” ׳׳›׳•׳ ׳ ׳™ ׳×׳•׳›׳ ׳× '׳׳•׳¦׳¨ ׳”׳—׳•׳›׳׳”' ׳—׳¡׳•׳׳”.";
                 return false;
             }
         }
         catch
         {
-            // Ignore access checks errors
         }
 
-        // Check Volume Serial Number
         string serialNumber = Interop.GetVolumeSerialNumber(driveRoot);
         if (!string.IsNullOrEmpty(serialNumber) && BlockedVolumeSerialNumbers.Contains(serialNumber))
         {
-            reason = "הגישה לכונן זה נחסמה לפי מזהה אמצעי האחסון.";
+            reason = "׳”׳’׳™׳©׳” ׳׳›׳•׳ ׳ ׳–׳” ׳ ׳—׳¡׳׳” ׳׳₪׳™ ׳׳–׳”׳” ׳׳׳¦׳¢׳™ ׳”׳׳—׳¡׳•׳.";
             return false;
         }
 
-        // 3.7 Whitelist model: By default, ONLY Removable drives (USB) are allowed
         if (drive.DriveType == DriveType.Removable)
         {
             return true;
         }
 
-        // For non-removable drives, verify explicit whitelist
         if (AllowedDriveRoots.Contains(driveRoot) ||
             AllowedDriveRoots.Contains(drive.Name) ||
             (!string.IsNullOrEmpty(serialNumber) && AllowedVolumeSerialNumbers.Contains(serialNumber)))
@@ -163,7 +162,7 @@ public class PathPolicy : IPathPolicy
             return true;
         }
 
-        reason = "הכונן אינו מורשה. המערכת מאפשרת גישה לכוננים נשלפים (USB) בלבד.";
+        reason = "׳”׳›׳•׳ ׳ ׳׳™׳ ׳• ׳׳•׳¨׳©׳”. ׳”׳׳¢׳¨׳›׳× ׳׳׳₪׳©׳¨׳× ׳’׳™׳©׳” ׳׳›׳•׳ ׳ ׳™׳ ׳ ׳©׳׳₪׳™׳ (USB) ׳‘׳׳‘׳“.";
         return false;
     }
 
@@ -195,22 +194,21 @@ public class PathPolicy : IPathPolicy
 
         if (string.IsNullOrWhiteSpace(rawPath))
         {
-            reason = "הנתיב המבוקש ריק.";
+            reason = "׳”׳ ׳×׳™׳‘ ׳”׳׳‘׳•׳§׳© ׳¨׳™׳§.";
             return false;
         }
 
         string trimmed = rawPath.Trim();
 
-        // 3.4 Raw UNC & Special device namespace check
         if (trimmed.StartsWith(@"\\") || trimmed.StartsWith("//"))
         {
-            reason = "נתיבי רשת (UNC) ונתיבי התקן מיוחדים אינם מורשים במערכת.";
+            reason = "׳ ׳×׳™׳‘׳™ ׳¨׳©׳× (UNC) ׳•׳ ׳×׳™׳‘׳™ ׳”׳×׳§׳ ׳׳™׳•׳—׳“׳™׳ ׳׳™׳ ׳ ׳׳•׳¨׳©׳™׳ ׳‘׳׳¢׳¨׳›׳×.";
             return false;
         }
 
         if (trimmed.IndexOfAny(Path.GetInvalidPathChars()) >= 0 || trimmed.Contains('\0'))
         {
-            reason = "הנתיב מכיל תווים בלתי חוקיים.";
+            reason = "׳”׳ ׳×׳™׳‘ ׳׳›׳™׳ ׳×׳•׳•׳™׳ ׳‘׳׳×׳™ ׳—׳•׳§׳™׳™׳.";
             return false;
         }
 
@@ -221,35 +219,32 @@ public class PathPolicy : IPathPolicy
         }
         catch (Exception ex)
         {
-            reason = $"נתיב לא תקין: {ex.Message}";
+            reason = $"׳ ׳×׳™׳‘ ׳׳ ׳×׳§׳™׳: {ex.Message}";
             return false;
         }
 
-        // Check after normalization for UNC
         if (full.StartsWith(@"\\") || full.StartsWith("//") ||
             (Uri.TryCreate(full, UriKind.Absolute, out var uri) && uri.IsUnc))
         {
-            reason = "נתיבי רשת (UNC) אינם מורשים במערכת.";
+            reason = "׳ ׳×׳™׳‘׳™ ׳¨׳©׳× (UNC) ׳׳™׳ ׳ ׳׳•׳¨׳©׳™׳ ׳‘׳׳¢׳¨׳›׳×.";
             return false;
         }
 
-        // Validate reserved DOS device names in segments
         var segments = full.Split(new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar }, StringSplitOptions.RemoveEmptyEntries);
         foreach (var seg in segments)
         {
             var nameOnly = Path.GetFileNameWithoutExtension(seg);
-            if (ReservedDeviceNames.Any(r => string.Equals(r, nameOnly, StringComparison.OrdinalIgnoreCase)))
+            if (ReservedDeviceNames.Contains(nameOnly))
             {
-                reason = "הנתיב כולל שם התקן שמור של מערכת ההפעלה.";
+                reason = "׳”׳ ׳×׳™׳‘ ׳›׳•׳׳ ׳©׳ ׳”׳×׳§׳ ׳©׳׳•׳¨ ׳©׳ ׳׳¢׳¨׳›׳× ׳”׳”׳₪׳¢׳׳”.";
                 return false;
             }
         }
 
-        // Ensure drive root exists and has drive letter format
         var root = Path.GetPathRoot(full);
         if (string.IsNullOrWhiteSpace(root) || root.Length < 2 || root[1] != ':')
         {
-            reason = "הנתיב אינו משויך לכונן חוקי במערכת.";
+            reason = "׳”׳ ׳×׳™׳‘ ׳׳™׳ ׳• ׳׳©׳•׳™׳ ׳׳›׳•׳ ׳ ׳—׳•׳§׳™ ׳‘׳׳¢׳¨׳›׳×.";
             return false;
         }
 
@@ -278,20 +273,18 @@ public class PathPolicy : IPathPolicy
         var root = Path.GetPathRoot(normalizedPath);
         if (string.IsNullOrWhiteSpace(root))
         {
-            reason = "נתיב שגוי: לא נמצא שורש כונן.";
+            reason = "׳ ׳×׳™׳‘ ׳©׳’׳•׳™: ׳׳ ׳ ׳׳¦׳ ׳©׳•׳¨׳© ׳›׳•׳ ׳.";
             return false;
         }
 
-        // Check against dynamic system drive and C:\
         if (string.Equals(root, SystemDriveRoot, StringComparison.OrdinalIgnoreCase) ||
             string.Equals(root, @"C:\", StringComparison.OrdinalIgnoreCase) ||
             root.StartsWith("c:", StringComparison.OrdinalIgnoreCase))
         {
-            reason = "הגישה לכונן המערכת (C:) חסומה מטעמי אבטחה.";
+            reason = "׳”׳’׳™׳©׳” ׳׳›׳•׳ ׳ ׳”׳׳¢׳¨׳›׳× (C:) ׳—׳¡׳•׳׳” ׳׳˜׳¢׳׳™ ׳׳‘׳˜׳—׳”.";
             return false;
         }
 
-        // If explicitly allowed directory, skip drive type check
         if (IsPathWithinAllowedExplicitDirectory(normalizedPath))
         {
             return true;
@@ -304,7 +297,7 @@ public class PathPolicy : IPathPolicy
         }
         catch (Exception ex)
         {
-            reason = $"לא ניתן לגשת לכונן {root}: {ex.Message}";
+            reason = $"׳׳ ׳ ׳™׳×׳ ׳׳’׳©׳× ׳׳›׳•׳ ׳ {root}: {ex.Message}";
             return false;
         }
 
@@ -316,48 +309,47 @@ public class PathPolicy : IPathPolicy
         finalResolvedPath = path;
         reason = null;
 
-        // 3.3 WinAPI kernel-level canonical resolution
+        // Resolve kernel-level path to check destination against security boundaries.
         string canonicalPath = Interop.GetFinalPath(path);
         if (!string.IsNullOrWhiteSpace(canonicalPath) &&
             !string.Equals(canonicalPath, path, StringComparison.OrdinalIgnoreCase))
         {
             if (!TryNormalizePath(canonicalPath, out string normalizedCanonical, out reason))
             {
-                reason = $"הקישור מצביע ליעד בלתי חוקי: {reason}";
+                reason = $"׳”׳§׳™׳©׳•׳¨ ׳׳¦׳‘׳™׳¢ ׳׳™׳¢׳“ ׳‘׳׳×׳™ ׳—׳•׳§׳™: {reason}";
                 return false;
             }
 
             if (!ValidateLocation(normalizedCanonical, out reason))
             {
-                reason = $"הקישור (Junction / Symlink) מצביע ליעד חסום: {reason}";
+                reason = $"׳”׳§׳™׳©׳•׳¨ (Junction / Symlink) ׳׳¦׳‘׳™׳¢ ׳׳™׳¢׳“ ׳—׳¡׳•׳: {reason}";
                 return false;
             }
 
             finalResolvedPath = normalizedCanonical;
         }
 
-        // .NET built-in link target resolution for FileSystemInfo
         try
         {
             FileSystemInfo info = Directory.Exists(path) ? new DirectoryInfo(path) : new FileInfo(path);
-            if ((info.Attributes & FileAttributes.ReparsePoint) == FileAttributes.ReparsePoint)
+            if (info.Exists && (info.Attributes & FileAttributes.ReparsePoint) == FileAttributes.ReparsePoint)
             {
                 var target = info.ResolveLinkTarget(true);
                 if (target == null)
                 {
-                    reason = "הקישור (Symlink) שבור או שאינו מצביע ליעד תקף.";
+                    reason = "׳”׳§׳™׳©׳•׳¨ (Symlink) ׳©׳‘׳•׳¨ ׳׳• ׳©׳׳™׳ ׳• ׳׳¦׳‘׳™׳¢ ׳׳™׳¢׳“ ׳×׳§׳£.";
                     return false;
                 }
 
                 if (!TryNormalizePath(target.FullName, out string targetNormalized, out reason))
                 {
-                    reason = $"יעד הקישור אינו חוקי: {reason}";
+                    reason = $"׳™׳¢׳“ ׳”׳§׳™׳©׳•׳¨ ׳׳™׳ ׳• ׳—׳•׳§׳™: {reason}";
                     return false;
                 }
 
                 if (!ValidateLocation(targetNormalized, out reason))
                 {
-                    reason = $"הקישור מצביע למיקום חסום במערכת: {reason}";
+                    reason = $"׳”׳§׳™׳©׳•׳¨ ׳׳¦׳‘׳™׳¢ ׳׳׳™׳§׳•׳ ׳—׳¡׳•׳ ׳‘׳׳¢׳¨׳›׳×: {reason}";
                     return false;
                 }
 
@@ -366,7 +358,7 @@ public class PathPolicy : IPathPolicy
         }
         catch (Exception ex)
         {
-            reason = $"שגיאה בבדיקת יעד הקישור: {ex.Message}";
+            reason = $"׳©׳’׳™׳׳” ׳‘׳‘׳“׳™׳§׳× ׳™׳¢׳“ ׳”׳§׳™׳©׳•׳¨: {ex.Message}";
             return false;
         }
 
@@ -377,12 +369,7 @@ public class PathPolicy : IPathPolicy
     {
         try
         {
-            if (File.Exists(path))
-            {
-                var attr = File.GetAttributes(path);
-                return (attr & (FileAttributes.Hidden | FileAttributes.System)) != 0;
-            }
-            if (Directory.Exists(path))
+            if (File.Exists(path) || Directory.Exists(path))
             {
                 var attr = File.GetAttributes(path);
                 return (attr & (FileAttributes.Hidden | FileAttributes.System)) != 0;
@@ -390,7 +377,8 @@ public class PathPolicy : IPathPolicy
         }
         catch
         {
-            return true; // If attributes can't be read, treat as unsafe
+            // Treat unreadable paths as restricted.
+            return true;
         }
         return false;
     }
@@ -411,6 +399,7 @@ public class PathPolicy : IPathPolicy
         }
         catch
         {
+            // Treat unreadable ancestors as restricted.
             return true;
         }
         return false;
@@ -427,17 +416,15 @@ public class PathPolicy : IPathPolicy
         if (!ValidateReparsePoint(fullPath, out string resolvedPath, out reason))
             return false;
 
-        // Check if resolved path is still allowed
         if (!string.Equals(fullPath, resolvedPath, StringComparison.OrdinalIgnoreCase))
         {
             if (!ValidateLocation(resolvedPath, out reason))
                 return false;
         }
 
-        // Hidden / System directory check
         if (HasHiddenOrSystemAttribute(resolvedPath) || HasHiddenOrSystemAncestor(resolvedPath))
         {
-            reason = "הגישה לתיקיות מוסתרות או תיקיות מערכת חסומה.";
+            reason = "׳”׳’׳™׳©׳” ׳׳×׳™׳§׳™׳•׳× ׳׳•׳¡׳×׳¨׳•׳× ׳׳• ׳×׳™׳§׳™׳•׳× ׳׳¢׳¨׳›׳× ׳—׳¡׳•׳׳”.";
             return false;
         }
 
@@ -452,7 +439,7 @@ public class PathPolicy : IPathPolicy
             var di = new DirectoryInfo(directoryPath);
             if ((di.Attributes & (FileAttributes.Hidden | FileAttributes.System)) != 0)
             {
-                reason = "תיקייה מוסתרת.";
+                reason = "׳×׳™׳§׳™׳™׳” ׳׳•׳¡׳×׳¨׳×.";
                 return false;
             }
 
@@ -481,7 +468,7 @@ public class PathPolicy : IPathPolicy
             var fi = new FileInfo(filePath);
             if ((fi.Attributes & (FileAttributes.Hidden | FileAttributes.System)) != 0)
             {
-                reason = "קובץ מוסתר או קובץ מערכת.";
+                reason = "׳§׳•׳‘׳¥ ׳׳•׳¡׳×׳¨ ׳׳• ׳§׳•׳‘׳¥ ׳׳¢׳¨׳›׳×.";
                 return false;
             }
 
@@ -521,14 +508,14 @@ public class PathPolicy : IPathPolicy
 
         if (HasHiddenOrSystemAttribute(resolvedPath) || HasHiddenOrSystemAncestor(resolvedPath))
         {
-            reason = "חל איסור על פתיחת קובצי מערכת או קבצים מוסתרים.";
+            reason = "׳—׳ ׳׳™׳¡׳•׳¨ ׳¢׳ ׳₪׳×׳™׳—׳× ׳§׳•׳‘׳¦׳™ ׳׳¢׳¨׳›׳× ׳׳• ׳§׳‘׳¦׳™׳ ׳׳•׳¡׳×׳¨׳™׳.";
             return false;
         }
 
         string ext = Path.GetExtension(resolvedPath)?.ToLowerInvariant();
         if (string.IsNullOrEmpty(ext) || !allowedExtensions.Contains(ext))
         {
-            reason = $"סוג הקובץ '{ext}' אינו מאושר לפתיחה במערכת.";
+            reason = $"׳¡׳•׳’ ׳”׳§׳•׳‘׳¥ '{ext}' ׳׳™׳ ׳• ׳׳׳•׳©׳¨ ׳׳₪׳×׳™׳—׳” ׳‘׳׳¢׳¨׳›׳×.";
             return false;
         }
 
@@ -540,11 +527,10 @@ public class PathPolicy : IPathPolicy
         if (!TryNormalizePath(path, out string fullPath, out reason))
             return false;
 
-        // 3.6 Solid check against deleting drive roots
         var root = Path.GetPathRoot(fullPath);
         if (string.Equals(root?.TrimEnd('\\', '/'), fullPath.TrimEnd('\\', '/'), StringComparison.OrdinalIgnoreCase))
         {
-            reason = "חל איסור מוחלט על מחיקת כוננים!";
+            reason = "׳—׳ ׳׳™׳¡׳•׳¨ ׳׳•׳—׳׳˜ ׳¢׳ ׳׳—׳™׳§׳× ׳›׳•׳ ׳ ׳™׳!";
             return false;
         }
 
@@ -557,7 +543,7 @@ public class PathPolicy : IPathPolicy
         var resolvedRoot = Path.GetPathRoot(resolvedPath);
         if (string.Equals(resolvedRoot?.TrimEnd('\\', '/'), resolvedPath.TrimEnd('\\', '/'), StringComparison.OrdinalIgnoreCase))
         {
-            reason = "חל איסור מוחלט על מחיקת כוננים (זוהה קישור לשורש כונן)!";
+            reason = "׳—׳ ׳׳™׳¡׳•׳¨ ׳׳•׳—׳׳˜ ׳¢׳ ׳׳—׳™׳§׳× ׳›׳•׳ ׳ ׳™׳ (׳–׳•׳”׳” ׳§׳™׳©׳•׳¨ ׳׳©׳•׳¨׳© ׳›׳•׳ ׳)!";
             return false;
         }
 
@@ -578,21 +564,19 @@ public class PathPolicy : IPathPolicy
         if (!ValidateLocation(fullNew, out reason))
             return false;
 
-        // Verify directory matches exactly (no path traversal across folders)
         var oldDir = Path.GetDirectoryName(fullOld);
         var newDir = Path.GetDirectoryName(fullNew);
         if (!string.Equals(oldDir, newDir, StringComparison.OrdinalIgnoreCase))
         {
-            reason = "ניסיון לשינוי מיקום הקובץ (Path Traversal) נחסם.";
+            reason = "׳ ׳™׳¡׳™׳•׳ ׳׳©׳™׳ ׳•׳™ ׳׳™׳§׳•׳ ׳”׳§׳•׳‘׳¥ (Path Traversal) ׳ ׳—׳¡׳.";
             return false;
         }
 
-        // Verify extension remains identical
         var oldExt = Path.GetExtension(fullOld);
         var newExt = Path.GetExtension(fullNew);
         if (!string.Equals(oldExt, newExt, StringComparison.OrdinalIgnoreCase))
         {
-            reason = "חל איסור על שינוי סיומת הקובץ.";
+            reason = "׳—׳ ׳׳™׳¡׳•׳¨ ׳¢׳ ׳©׳™׳ ׳•׳™ ׳¡׳™׳•׳׳× ׳”׳§׳•׳‘׳¥.";
             return false;
         }
 

@@ -6,26 +6,37 @@ namespace LiteExplorer.Infrastructure.Converters;
 
 internal class BytesToNormalSize : Converter
 {
-    private const double BytesInKB = 1024;
-    private const double BytesInMB = 1048576;
-    private const double BytesInGB = 1073741824;
+    private const double BytesInKB = 1024.0;
+    private const double BytesInMB = 1048576.0;
+    private const double BytesInGB = 1073741824.0;
+    private const double UnknownSizeSentinel = 12345667658675846.0;
 
     public override object Convert(object value, Type targetType, object parameter, CultureInfo culture)
     {
-        var spaceInBytes = System.Convert.ToDouble(value);
+        if (value == null) return string.Empty;
 
-        // הצגת ריק לתיקייה
-        if (spaceInBytes == 012345667658675846) {
-            return "";
+        double spaceInBytes;
+        try
+        {
+            spaceInBytes = System.Convert.ToDouble(value);
+        }
+        catch
+        {
+            return string.Empty;
+        }
+
+        if (spaceInBytes < 0 || Math.Abs(spaceInBytes - UnknownSizeSentinel) < 1.0)
+        {
+            return string.Empty;
         }
 
         if (spaceInBytes + 4096 >= BytesInGB)
             return $"{spaceInBytes / BytesInGB:0.00} GB";
-        else if (spaceInBytes >= BytesInMB)
+        if (spaceInBytes >= BytesInMB)
             return $"{spaceInBytes / BytesInMB:0.0} MB";
-        else if (spaceInBytes >= BytesInKB)
+        if (spaceInBytes >= BytesInKB)
             return $"{spaceInBytes / BytesInKB:0} KB";
-        else
-            return $"{spaceInBytes:0} B";
+
+        return $"{spaceInBytes:0} B";
     }
 }

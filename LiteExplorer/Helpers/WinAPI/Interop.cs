@@ -1,4 +1,4 @@
-using Microsoft.Win32.SafeHandles;
+﻿using Microsoft.Win32.SafeHandles;
 using System;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -7,6 +7,13 @@ namespace LiteExplorer.Helpers.WinAPI;
 
 public static class Interop
 {
+    private const uint FILE_READ_EA = 0x0008;
+    private const uint FILE_FLAG_BACKUP_SEMANTICS = 0x02000000;
+    private const uint OPEN_EXISTING = 3;
+    private const uint FILE_SHARE_READ = 1;
+    private const uint FILE_SHARE_WRITE = 2;
+    private const uint FILE_SHARE_DELETE = 4;
+
     [DllImport("shell32.dll", CharSet = CharSet.Auto)]
     public static extern IntPtr SHGetFileInfo(
         string path,
@@ -30,13 +37,6 @@ public static class Interop
         out uint fileSystemFlags,
         StringBuilder fileSystemNameBuffer,
         int fileSystemNameSize);
-
-    private const uint FILE_READ_EA = 0x0008;
-    private const uint FILE_FLAG_BACKUP_SEMANTICS = 0x02000000;
-    private const uint OPEN_EXISTING = 3;
-    private const uint FILE_SHARE_READ = 1;
-    private const uint FILE_SHARE_WRITE = 2;
-    private const uint FILE_SHARE_DELETE = 4;
 
     [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Auto)]
     public static extern SafeFileHandle CreateFile(
@@ -63,7 +63,7 @@ public static class Interop
         try
         {
             if (string.IsNullOrWhiteSpace(rootPath)) return null;
-            if (!rootPath.EndsWith("\\")) rootPath += "\\";
+            if (!rootPath.EndsWith('\\')) rootPath += "\\";
 
             var volumeName = new StringBuilder(261);
             var fileSystemName = new StringBuilder(261);
@@ -74,13 +74,12 @@ public static class Interop
         }
         catch
         {
-            // Silently ignore if drive is not queryable
         }
         return null;
     }
 
     /// <summary>
-    /// Resolves the real final path on disk by resolving all symlinks, junctions, and mount points.
+    /// Resolves the canonical path on disk by resolving symlinks, junctions, and mount points.
     /// </summary>
     public static string GetFinalPath(string path)
     {
@@ -118,7 +117,6 @@ public static class Interop
         }
         catch
         {
-            // Fallback to caller's original path
         }
 
         return path;
