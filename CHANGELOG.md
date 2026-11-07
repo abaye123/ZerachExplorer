@@ -2,6 +2,12 @@
 
 All notable changes to ZerachExplorer will be documented in this file.
 
+## [1.5.1] - Tabs UX & Color Palette Improvements
+
+### Features & UI (תכונות וממשק משתמש)
+- **Tab Close Button (איקס לסגירת כרטיסיות):** Added a close ('X') button to explorer tabs matching modern browser and Windows Explorer behaviors with proper RTL alignment, hover cursor, and graceful exit upon closing the last active tab.
+- **Color Palette Brightening (הבהרת גווני כתום):** Brightened the dark rust-orange warning and danger palette in PercentToColor converter to clear, vibrant tones (RGB(255, 140, 20) and RGB(255, 185, 60)).
+
 ## [1.5.0] - Stage 2: File Operations & Device Management
 
 ### Features (תכונות חדשות)

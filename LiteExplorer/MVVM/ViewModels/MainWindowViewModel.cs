@@ -38,7 +38,7 @@ internal class MainWindowViewModel : ViewModel
 
         CloseAppCmd = new ActionCommand(_ => Application.Current.Shutdown());
         AddTabCmd = new ActionCommand(OnAddTabCmdExecuted);
-        CloseTabCmd = new ActionCommand(OnCloseTabCmdExecuted, _ => Tabs.Count > 1);
+        CloseTabCmd = new ActionCommand(OnCloseTabCmdExecuted);
     }
 
     private static TabContentViewModel CreateTabViewModel() =>
@@ -53,11 +53,20 @@ internal class MainWindowViewModel : ViewModel
 
     private void OnCloseTabCmdExecuted(object p)
     {
-        if (p is TabContentViewModel closeTab)
+        var closeTab = (p as TabContentViewModel) ?? CurrentTab;
+        if (closeTab != null && Tabs.Contains(closeTab))
         {
             closeTab.Dispose();
             Tabs.Remove(closeTab);
-            CurrentTab = Tabs.LastOrDefault();
+
+            if (Tabs.Count == 0)
+            {
+                Application.Current.Shutdown();
+            }
+            else
+            {
+                CurrentTab = Tabs.LastOrDefault();
+            }
         }
     }
 }

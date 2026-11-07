@@ -7,8 +7,8 @@ namespace LiteExplorer.Infrastructure.Converters;
 
 internal class PercentToColor : Converter
 {
-    private static readonly SolidColorBrush DangerBrush = CreateFrozenBrush(150, 50, 0);
-    private static readonly SolidColorBrush WarningBrush = CreateFrozenBrush(150, 150, 50);
+    private static readonly SolidColorBrush DangerBrush = CreateFrozenBrush(255, 140, 20);
+    private static readonly SolidColorBrush WarningBrush = CreateFrozenBrush(255, 185, 60);
     private static readonly SolidColorBrush ZeroBrush = CreateFrozenBrush(255, 255, 255);
     private static readonly SolidColorBrush InfoBrush = CreateFrozenBrush(50, 150, 50);
 
