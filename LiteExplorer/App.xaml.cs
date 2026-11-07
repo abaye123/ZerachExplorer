@@ -1,5 +1,6 @@
-﻿using LiteExplorer.MVVM.ViewModels;
+using LiteExplorer.MVVM.ViewModels;
 using LiteExplorer.MVVM.Views.Windows;
+using LiteExplorer.Services;
 using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Windows;
@@ -18,6 +19,7 @@ public partial class App
     {
         var services = new ServiceCollection();
 
+        services.AddSingleton<IPathPolicy, PathPolicy>();
         services.AddSingleton<MainWindowViewModel>();
         services.AddSingleton<MainWindow>(provider => new()
         {
