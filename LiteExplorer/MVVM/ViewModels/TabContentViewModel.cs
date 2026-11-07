@@ -1,5 +1,6 @@
 using LiteExplorer.Helpers;
 using LiteExplorer.Helpers.Enums;
+using LiteExplorer.Helpers.WinAPI;
 using LiteExplorer.Infrastructure.Commands;
 using LiteExplorer.MVVM.Models;
 using LiteExplorer.MVVM.ViewModels.Base;
@@ -28,9 +29,14 @@ internal class TabContentViewModel : ViewModel, IDisposable
     #region Private fields
 
     private readonly IPathPolicy pathPolicy;
+    private readonly IDriveEjectService driveEjectService;
+    private readonly object scanLock = new();
     private CancellationTokenSource currentScanCts;
     private long currentScanId;
-    private readonly object scanLock = new();
+
+    private static readonly List<string> InternalClipboard = new();
+    private static bool IsClipboardCut = false;
+    private readonly List<FileSystemObject> selectedFileSystemObjects = new();
 
     #endregion
 
@@ -49,9 +55,8 @@ internal class TabContentViewModel : ViewModel, IDisposable
         get => tabPath;
         set
         {
-            value = value?.Trim();
-            if (value == "") value = null;
             SetValue(ref tabPath, value);
+            TabCommand = tabPath;
         }
     }
 
@@ -84,6 +89,7 @@ internal class TabContentViewModel : ViewModel, IDisposable
     }
 
     public ObservableCollection<FileSystemObject> FileSystemObjects { get; set; } = new();
+    public IReadOnlyList<FileSystemObject> SelectedFileSystemObjects => selectedFileSystemObjects;
 
     #endregion
 
@@ -98,14 +104,20 @@ internal class TabContentViewModel : ViewModel, IDisposable
     public ICommand BackHome { get; }
     public ICommand ResetOtzariaCmd { get; }
     public ICommand OpenAboutCmd { get; }
+    public ICommand CopyCmd { get; }
+    public ICommand CutCmd { get; }
+    public ICommand PasteCmd { get; }
+    public ICommand CreateDirectoryCmd { get; }
+    public ICommand EjectDriveCmd { get; }
 
     #endregion
 
     #region Constructor & Disposal
 
-    public TabContentViewModel(IPathPolicy pathPolicy = null)
+    public TabContentViewModel(IPathPolicy pathPolicy = null, IDriveEjectService driveEjectService = null)
     {
         this.pathPolicy = pathPolicy ?? App.Container?.GetService<IPathPolicy>() ?? new PathPolicy();
+        this.driveEjectService = driveEjectService ?? App.Container?.GetService<IDriveEjectService>() ?? new DriveEjectService(this.pathPolicy);
 
         OpenCmd = new ActionCommand(OnOpenCmdExecuted);
         DeleteCmd = new ActionCommand(OnDeletePath);
@@ -115,6 +127,11 @@ internal class TabContentViewModel : ViewModel, IDisposable
         CalculateFolderSizeCmd = new ActionCommand(OnCalculateFolderSizeExecuted);
         ResetOtzariaCmd = new ActionCommand(OnResetOtzariaCmdExecuted);
         OpenAboutCmd = new ActionCommand(OnOpenAboutCmdExecuted);
+        CopyCmd = new ActionCommand(OnCopyCmdExecuted);
+        CutCmd = new ActionCommand(OnCutCmdExecuted);
+        PasteCmd = new ActionCommand(OnPasteCmdExecuted);
+        CreateDirectoryCmd = new ActionCommand(OnCreateDirectoryCmdExecuted);
+        EjectDriveCmd = new ActionCommand(OnEjectDriveCmdExecuted);
 
         OpenCmd.Execute(TabPath);
     }
@@ -131,7 +148,412 @@ internal class TabContentViewModel : ViewModel, IDisposable
 
     #endregion
 
-    #region Command Handlers
+    #region Selection
+
+    public void SetSelectedItems(IEnumerable<FileSystemObject> items)
+    {
+        selectedFileSystemObjects.Clear();
+        if (items != null)
+        {
+            selectedFileSystemObjects.AddRange(items);
+        }
+    }
+
+    private List<string> GetSelectedOrCurrentPaths(object commandParameter = null)
+    {
+        var paramPath = commandParameter?.ToString()?.Trim();
+        if (!string.IsNullOrEmpty(paramPath))
+        {
+            return new List<string> { paramPath };
+        }
+
+        if (selectedFileSystemObjects.Count > 0)
+        {
+            return selectedFileSystemObjects
+                .Where(x => !string.IsNullOrEmpty(x.Path))
+                .Select(x => x.Path)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+
+        if (!string.IsNullOrEmpty(CurrentFileSystemObject?.Path))
+        {
+            return new List<string> { CurrentFileSystemObject.Path };
+        }
+
+        return new List<string>();
+    }
+
+    #endregion
+
+    #region File Transfer Handlers (Copy, Cut, Paste)
+
+    private void OnCopyCmdExecuted(object p)
+    {
+        var paths = GetSelectedOrCurrentPaths(p);
+        if (paths.Count == 0) return;
+
+        lock (InternalClipboard)
+        {
+            InternalClipboard.Clear();
+            InternalClipboard.AddRange(paths);
+            IsClipboardCut = false;
+        }
+
+        try
+        {
+            var collection = new System.Collections.Specialized.StringCollection();
+            collection.AddRange(paths.ToArray());
+            Clipboard.SetFileDropList(collection);
+        }
+        catch
+        {
+        }
+    }
+
+    private void OnCutCmdExecuted(object p)
+    {
+        var paths = GetSelectedOrCurrentPaths(p);
+        if (paths.Count == 0) return;
+
+        lock (InternalClipboard)
+        {
+            InternalClipboard.Clear();
+            InternalClipboard.AddRange(paths);
+            IsClipboardCut = true;
+        }
+
+        try
+        {
+            var collection = new System.Collections.Specialized.StringCollection();
+            collection.AddRange(paths.ToArray());
+            Clipboard.SetFileDropList(collection);
+        }
+        catch
+        {
+        }
+    }
+
+    private async void OnPasteCmdExecuted(object p)
+    {
+        if (string.IsNullOrEmpty(TabPath) || !Directory.Exists(TabPath))
+        {
+            MessageBox.Show("לא ניתן להדביק פריטים במסך הראשי. אנא בחר כונן או תיקייה תחילה.", "הדבקה", MessageBoxButton.OK, MessageBoxImage.Information, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
+            return;
+        }
+
+        if (!pathPolicy.CanNavigate(TabPath, out var navReason))
+        {
+            MessageBox.Show(navReason, "גישה נדחתה", MessageBoxButton.OK, MessageBoxImage.Warning, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
+            return;
+        }
+
+        List<string> sourcesToPaste;
+        bool isCut;
+
+        lock (InternalClipboard)
+        {
+            if (InternalClipboard.Count > 0)
+            {
+                sourcesToPaste = InternalClipboard.ToList();
+                isCut = IsClipboardCut;
+            }
+            else
+            {
+                sourcesToPaste = new List<string>();
+                isCut = false;
+                try
+                {
+                    if (Clipboard.ContainsFileDropList())
+                    {
+                        var dropList = Clipboard.GetFileDropList();
+                        foreach (var item in dropList)
+                        {
+                            if (!string.IsNullOrWhiteSpace(item))
+                                sourcesToPaste.Add(item);
+                        }
+                    }
+                }
+                catch
+                {
+                }
+            }
+        }
+
+        if (sourcesToPaste.Count == 0)
+            return;
+
+        string targetDir = TabPath;
+        var errors = new List<string>();
+        ConflictResolutionAction? globalResolution = null;
+
+        IsLoading = true;
+        try
+        {
+            await Task.Run(() =>
+            {
+                foreach (var source in sourcesToPaste)
+                {
+                    bool isFile = File.Exists(source);
+                    bool isDir = Directory.Exists(source);
+
+                    if (!isFile && !isDir)
+                    {
+                        errors.Add($"הפריט '{source}' אינו קיים במערכת.");
+                        continue;
+                    }
+
+                    if (isFile)
+                    {
+                        if (isCut)
+                        {
+                            if (!pathPolicy.CanMoveFile(source, targetDir, out var reason))
+                            {
+                                errors.Add($"{Path.GetFileName(source)}: {reason}");
+                                continue;
+                            }
+                        }
+                        else
+                        {
+                            if (!pathPolicy.CanCopyFile(source, targetDir, out var reason))
+                            {
+                                errors.Add($"{Path.GetFileName(source)}: {reason}");
+                                continue;
+                            }
+                        }
+
+                        string fileName = Path.GetFileName(source);
+                        string destFile = Path.Combine(targetDir, fileName);
+
+                        if (File.Exists(destFile))
+                        {
+                            ConflictResolutionAction action;
+                            if (globalResolution.HasValue)
+                            {
+                                action = globalResolution.Value;
+                            }
+                            else
+                            {
+                                ConflictResolutionResult dialogResult = null;
+                                Application.Current?.Dispatcher?.Invoke(() =>
+                                {
+                                    dialogResult = ConflictResolutionDialog.Prompt(
+                                        Application.Current?.MainWindow,
+                                        fileName,
+                                        destFile,
+                                        source);
+                                });
+
+                                if (dialogResult == null || dialogResult.Action == ConflictResolutionAction.Cancel)
+                                    break;
+
+                                if (dialogResult.ApplyToAll)
+                                    globalResolution = dialogResult.Action;
+
+                                action = dialogResult.Action;
+                            }
+
+                            if (action == ConflictResolutionAction.Skip)
+                                continue;
+
+                            if (action == ConflictResolutionAction.KeepBoth)
+                                destFile = GenerateUniqueFilePath(targetDir, fileName);
+                        }
+
+                        try
+                        {
+                            if (isCut)
+                            {
+                                File.Move(source, destFile, overwrite: true);
+                            }
+                            else
+                            {
+                                File.Copy(source, destFile, overwrite: true);
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            errors.Add($"{fileName}: {ex.Message}");
+                        }
+                    }
+                    else
+                    {
+                        if (!pathPolicy.CanTransferDirectory(source, targetDir, isCut, out var reason))
+                        {
+                            errors.Add($"{Path.GetFileName(source)}: {reason}");
+                            continue;
+                        }
+
+                        string dirName = Path.GetFileName(source.TrimEnd('\\', '/'));
+                        string destSubDir = Path.Combine(targetDir, dirName);
+
+                        try
+                        {
+                            if (isCut)
+                            {
+                                MoveDirectory(source, destSubDir);
+                            }
+                            else
+                            {
+                                CopyDirectoryRecursive(source, destSubDir);
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            errors.Add($"{dirName}: {ex.Message}");
+                        }
+                    }
+                }
+            });
+
+            if (isCut)
+            {
+                lock (InternalClipboard)
+                {
+                    InternalClipboard.Clear();
+                }
+                try
+                {
+                    Clipboard.Clear();
+                }
+                catch
+                {
+                }
+            }
+
+            OpenTabPath();
+
+            if (errors.Count > 0)
+            {
+                string msg = $"חלק מהקבצים לא הועברו:\n\n{string.Join("\n", errors.Take(5))}";
+                if (errors.Count > 5)
+                    msg += $"\nועוד {errors.Count - 5} שגיאות נוספות.";
+
+                MessageBox.Show(msg, "הודעת העברה", MessageBoxButton.OK, MessageBoxImage.Warning, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
+            }
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    private static string GenerateUniqueFilePath(string destinationDirectory, string fileName)
+    {
+        string nameWithoutExt = Path.GetFileNameWithoutExtension(fileName);
+        string ext = Path.GetExtension(fileName);
+        int counter = 1;
+        string candidate;
+        do
+        {
+            candidate = Path.Combine(destinationDirectory, $"{nameWithoutExt} ({counter}){ext}");
+            counter++;
+        } while (File.Exists(candidate) || Directory.Exists(candidate));
+
+        return candidate;
+    }
+
+    private static void CopyDirectoryRecursive(string sourceDir, string destDir)
+    {
+        Directory.CreateDirectory(destDir);
+        foreach (var file in Directory.GetFiles(sourceDir))
+        {
+            string destFile = Path.Combine(destDir, Path.GetFileName(file));
+            File.Copy(file, destFile, overwrite: true);
+        }
+        foreach (var subDir in Directory.GetDirectories(sourceDir))
+        {
+            string destSub = Path.Combine(destDir, Path.GetFileName(subDir));
+            CopyDirectoryRecursive(subDir, destSub);
+        }
+    }
+
+    private static void MoveDirectory(string sourceDir, string destDir)
+    {
+        try
+        {
+            Directory.Move(sourceDir, destDir);
+        }
+        catch (IOException)
+        {
+            CopyDirectoryRecursive(sourceDir, destDir);
+            Directory.Delete(sourceDir, recursive: true);
+        }
+    }
+
+    #endregion
+
+    #region Directory Creation & Device Eject Handlers
+
+    private void OnCreateDirectoryCmdExecuted(object p)
+    {
+        if (string.IsNullOrEmpty(TabPath) || !Directory.Exists(TabPath))
+        {
+            MessageBox.Show("לא ניתן ליצור תיקייה במסך הראשי. אנא בחר כונן או תיקייה תחילה.", "יצירת תיקייה", MessageBoxButton.OK, MessageBoxImage.Information, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
+            return;
+        }
+
+        if (!pathPolicy.CanNavigate(TabPath, out var navReason))
+        {
+            MessageBox.Show(navReason, "גישה נדחתה", MessageBoxButton.OK, MessageBoxImage.Warning, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
+            return;
+        }
+
+        if (NewFolderDialog.Prompt(Application.Current?.MainWindow, TabPath, pathPolicy, out string createdFolderName))
+        {
+            try
+            {
+                Directory.CreateDirectory(Path.Combine(TabPath, createdFolderName));
+                OpenTabPath();
+            }
+            catch (Exception ex)
+            {
+                CrashLogger.LogException(ex, $"Failed to create folder '{createdFolderName}' in '{TabPath}'");
+                MessageBox.Show($"יצירת התיקייה נכשלה: {ex.Message}", "שגיאה", MessageBoxButton.OK, MessageBoxImage.Error, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
+            }
+        }
+    }
+
+    private void OnEjectDriveCmdExecuted(object p)
+    {
+        string targetDrive = null;
+        if (CurrentFileSystemObject != null && !string.IsNullOrEmpty(CurrentFileSystemObject.Path))
+        {
+            targetDrive = Path.GetPathRoot(CurrentFileSystemObject.Path);
+        }
+        else if (!string.IsNullOrEmpty(TabPath))
+        {
+            targetDrive = Path.GetPathRoot(TabPath);
+        }
+        else if (selectedFileSystemObjects.Count > 0)
+        {
+            targetDrive = Path.GetPathRoot(selectedFileSystemObjects[0].Path);
+        }
+
+        if (string.IsNullOrEmpty(targetDrive))
+        {
+            MessageBox.Show("נא לבחור כונן נשלף להוצאה.", "הוצאת התקן", MessageBoxButton.OK, MessageBoxImage.Information, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
+            return;
+        }
+
+        bool success = driveEjectService.EjectDrive(targetDrive, out string message);
+        MessageBox.Show(
+            message,
+            "הוצאת התקן USB",
+            MessageBoxButton.OK,
+            success ? MessageBoxImage.Information : MessageBoxImage.Warning,
+            MessageBoxResult.OK,
+            MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
+
+        if (success)
+        {
+            BackHome.Execute(null);
+        }
+    }
+
+    #endregion
+
+    #region Navigation & Execution Handlers
 
     private void OnOpenCmdExecuted(object p)
     {
@@ -188,11 +610,63 @@ internal class TabContentViewModel : ViewModel, IDisposable
 
     private void OnDeletePath(object p)
     {
-        string rawPath = p?.ToString()?.Trim();
+        var targets = GetSelectedOrCurrentPaths(p);
+        if (targets.Count == 0) return;
 
-        if (string.IsNullOrWhiteSpace(rawPath))
+        if (targets.Count > 1)
+        {
+            var confirmMulti = MessageBox.Show(
+                $"האם אתה בטוח שברצונך להעביר {targets.Count} פריטים שנבחרו לסל המיחזור?",
+                "אישור מחיקת פריטים",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question,
+                MessageBoxResult.No,
+                MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
+
+            if (confirmMulti != MessageBoxResult.Yes) return;
+
+            var multiErrors = new List<string>();
+            foreach (var target in targets)
+            {
+                if (!pathPolicy.CanDelete(target, out var reason))
+                {
+                    multiErrors.Add($"{Path.GetFileName(target)}: {reason}");
+                    continue;
+                }
+
+                try
+                {
+                    if (Directory.Exists(target))
+                    {
+                        Microsoft.VisualBasic.FileIO.FileSystem.DeleteDirectory(
+                            target,
+                            Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs,
+                            Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
+                    }
+                    else if (File.Exists(target))
+                    {
+                        Microsoft.VisualBasic.FileIO.FileSystem.DeleteFile(
+                            target,
+                            Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs,
+                            Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    multiErrors.Add($"{Path.GetFileName(target)}: {ex.Message}");
+                }
+            }
+
+            OpenTabPath();
+
+            if (multiErrors.Count > 0)
+            {
+                MessageBox.Show($"שגיאה במחיקת חלק מהפריטים:\n{string.Join("\n", multiErrors.Take(5))}", "שגיאה במחיקה", MessageBoxButton.OK, MessageBoxImage.Warning, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
+            }
             return;
+        }
 
+        string rawPath = targets[0];
         if (!pathPolicy.CanDelete(rawPath, out var deleteReason))
         {
             MessageBox.Show(deleteReason, "שגיאה במחיקה", MessageBoxButton.OK, MessageBoxImage.Warning, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
@@ -219,7 +693,6 @@ internal class TabContentViewModel : ViewModel, IDisposable
             return;
         }
 
-        // Count contents and check for hidden/system items before deletion.
         int fileCount = 0;
         int dirCount = 0;
         int hiddenCount = 0;
@@ -297,7 +770,6 @@ internal class TabContentViewModel : ViewModel, IDisposable
         {
             CrashLogger.LogException(ex, $"Recycle bin delete failed for: {fullPath}");
 
-            // Prompt user if Recycle Bin is unsupported on the target volume.
             var fallbackResult = MessageBox.Show(
                 $"לא ניתן היה להעביר את הפריט לסל המיחזור ({ex.Message}).\nהאם ברצונך למחוק לצמיתות את הפריט?",
                 "אזהרת מחיקה לצמיתות",
@@ -365,7 +837,6 @@ internal class TabContentViewModel : ViewModel, IDisposable
                 return;
             }
 
-            // Validate new filename to prevent path traversal.
             char[] invalidChars = Path.GetInvalidFileNameChars();
             if (newFileName.IndexOfAny(invalidChars) >= 0 ||
                 newFileName.Contains('/') ||
