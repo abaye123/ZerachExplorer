@@ -65,6 +65,7 @@ public partial class App
         var services = new ServiceCollection();
 
         services.AddSingleton<IPathPolicy, PathPolicy>();
+        services.AddSingleton<IDriveEjectService, DriveEjectService>();
         services.AddSingleton<MainWindowViewModel>();
         services.AddSingleton<MainWindow>(provider => new()
         {
