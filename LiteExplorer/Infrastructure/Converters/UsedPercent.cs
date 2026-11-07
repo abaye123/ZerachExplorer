@@ -1,4 +1,4 @@
-﻿using LiteExplorer.Infrastructure.Converters.Base;
+using LiteExplorer.Infrastructure.Converters.Base;
 using System;
 using System.Globalization;
 
@@ -8,8 +8,18 @@ internal class UsedPercent : MultiConverter
 {
     public override object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
     {
-        var total = System.Convert.ToDouble(values[0]);
-        var used = System.Convert.ToDouble(values[1]);
-        return used / total * 100;
+        if (values == null || values.Length < 2 || values[0] == null || values[1] == null)
+            return 0.0;
+
+        try
+        {
+            var total = System.Convert.ToDouble(values[0]);
+            var used = System.Convert.ToDouble(values[1]);
+            return total > 0 ? (used / total * 100.0) : 0.0;
+        }
+        catch
+        {
+            return 0.0;
+        }
     }
 }
