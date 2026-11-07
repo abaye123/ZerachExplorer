@@ -78,7 +78,6 @@ public class PathPolicy : IPathPolicy
             : path + Path.DirectorySeparatorChar;
     }
 
-    // 3.7 Whitelist drive validation with Volume Serial Number
     public bool IsDriveAllowed(DriveInfo drive, out string reason)
     {
         reason = null;
@@ -484,7 +483,6 @@ public class PathPolicy : IPathPolicy
         }
     }
 
-    // 3.2 Opening authorized files only
     public bool CanOpenFile(string filePath, out string reason)
     {
         if (!TryNormalizePath(filePath, out string fullPath, out reason))
@@ -518,6 +516,39 @@ public class PathPolicy : IPathPolicy
         return true;
     }
 
+    // 3.5 Validation for Rename
+    public bool CanRename(string oldPath, string newPath, out string reason)
+    {
+        if (!TryNormalizePath(oldPath, out string fullOld, out reason))
+            return false;
+
+        if (!TryNormalizePath(newPath, out string fullNew, out reason))
+            return false;
+
+        if (!ValidateLocation(fullOld, out reason))
+            return false;
+
+        if (!ValidateLocation(fullNew, out reason))
+            return false;
+
+        var oldDir = Path.GetDirectoryName(fullOld);
+        var newDir = Path.GetDirectoryName(fullNew);
+        if (!string.Equals(oldDir, newDir, StringComparison.OrdinalIgnoreCase))
+        {
+            reason = "ניסיון לשינוי מיקום הקובץ (Path Traversal) נחסם.";
+            return false;
+        }
+
+        var oldExt = Path.GetExtension(fullOld);
+        var newExt = Path.GetExtension(fullNew);
+        if (!string.Equals(oldExt, newExt, StringComparison.OrdinalIgnoreCase))
+        {
+            reason = "חל איסור על שינוי סיומת הקובץ.";
+            return false;
+        }
+
+        return true;
+    }
+
     public bool CanDelete(string path, out string reason) => throw new NotImplementedException();
-    public bool CanRename(string oldPath, string newPath, out string reason) => throw new NotImplementedException();
 }
