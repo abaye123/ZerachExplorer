@@ -13,7 +13,6 @@ public class PathPolicy : IPathPolicy
         ".doc", ".docx", ".xls", ".xlsx", ".pdf", ".txt", ".csv", ".one", ".onetoc2"
     };
 
-    // 3.4 DOS reserved device names
     private static readonly string[] ReservedDeviceNames = new[]
     {
         "CON", "PRN", "AUX", "NUL",
@@ -128,7 +127,6 @@ public class PathPolicy : IPathPolicy
         }
     }
 
-    // 3.4 Raw and normalized UNC and special device path validation
     public bool TryNormalizePath(string rawPath, out string normalizedPath, out string reason)
     {
         normalizedPath = null;
@@ -244,6 +242,67 @@ public class PathPolicy : IPathPolicy
         }
 
         return IsDriveAllowed(drive, out reason);
+    }
+
+    // 3.3 Deep Reparse Point, Junction and Symlink resolution and target verification
+    private bool ValidateReparsePoint(string path, out string finalResolvedPath, out string reason)
+    {
+        finalResolvedPath = path;
+        reason = null;
+
+        string canonicalPath = Interop.GetFinalPath(path);
+        if (!string.IsNullOrWhiteSpace(canonicalPath) &&
+            !string.Equals(canonicalPath, path, StringComparison.OrdinalIgnoreCase))
+        {
+            if (!TryNormalizePath(canonicalPath, out string normalizedCanonical, out reason))
+            {
+                reason = $"הקישור מצביע ליעד בלתי חוקי: {reason}";
+                return false;
+            }
+
+            if (!ValidateLocation(normalizedCanonical, out reason))
+            {
+                reason = $"הקישור (Junction / Symlink) מצביע ליעד חסום: {reason}";
+                return false;
+            }
+
+            finalResolvedPath = normalizedCanonical;
+        }
+
+        try
+        {
+            FileSystemInfo info = Directory.Exists(path) ? new DirectoryInfo(path) : new FileInfo(path);
+            if ((info.Attributes & FileAttributes.ReparsePoint) == FileAttributes.ReparsePoint)
+            {
+                var target = info.ResolveLinkTarget(true);
+                if (target == null)
+                {
+                    reason = "הקישור (Symlink) שבור או שאינו מצביע ליעד תקף.";
+                    return false;
+                }
+
+                if (!TryNormalizePath(target.FullName, out string targetNormalized, out reason))
+                {
+                    reason = $"יעד הקישור אינו חוקי: {reason}";
+                    return false;
+                }
+
+                if (!ValidateLocation(targetNormalized, out reason))
+                {
+                    reason = $"הקישור מצביע למיקום חסום במערכת: {reason}";
+                    return false;
+                }
+
+                finalResolvedPath = targetNormalized;
+            }
+        }
+        catch (Exception ex)
+        {
+            reason = $"שגיאה בבדיקת יעד הקישור: {ex.Message}";
+            return false;
+        }
+
+        return true;
     }
 
     public bool CanNavigate(string path, out string reason) => throw new NotImplementedException();
