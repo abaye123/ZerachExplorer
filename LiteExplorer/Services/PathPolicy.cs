@@ -87,6 +87,7 @@ public class PathPolicy : IPathPolicy
             return false;
         }
 
+        // 4.1 Prevent crash when checking unready drives (CD-ROM, empty card readers)
         if (!drive.IsReady)
         {
             reason = "הכונן אינו מוכן לשימוש (יתכן שאין מדיה בהתקן).";
@@ -95,6 +96,7 @@ public class PathPolicy : IPathPolicy
 
         string driveRoot = EnsureTrailingSeparator(drive.RootDirectory?.FullName ?? drive.Name);
 
+        // 3.1 Dynamic system drive detection and case-insensitive check
         if (string.Equals(driveRoot, SystemDriveRoot, StringComparison.OrdinalIgnoreCase) ||
             string.Equals(drive.Name, @"C:\", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(driveRoot, @"C:\", StringComparison.OrdinalIgnoreCase))
@@ -103,6 +105,7 @@ public class PathPolicy : IPathPolicy
             return false;
         }
 
+        // Check blocked volume labels (e.g. Otzar Hahochma)
         try
         {
             if (!string.IsNullOrWhiteSpace(drive.VolumeLabel))
@@ -119,8 +122,10 @@ public class PathPolicy : IPathPolicy
         }
         catch
         {
+            // If reading VolumeLabel fails, continue safely
         }
 
+        // Check physical markers on disk for Otzar Hahochma
         try
         {
             if (File.Exists(Path.Combine(driveRoot, "otzar.exe")) ||
@@ -133,8 +138,10 @@ public class PathPolicy : IPathPolicy
         }
         catch
         {
+            // Ignore access checks errors
         }
 
+        // Check Volume Serial Number
         string serialNumber = Interop.GetVolumeSerialNumber(driveRoot);
         if (!string.IsNullOrEmpty(serialNumber) && BlockedVolumeSerialNumbers.Contains(serialNumber))
         {
@@ -142,11 +149,13 @@ public class PathPolicy : IPathPolicy
             return false;
         }
 
+        // 3.7 Whitelist model: By default, ONLY Removable drives (USB) are allowed
         if (drive.DriveType == DriveType.Removable)
         {
             return true;
         }
 
+        // For non-removable drives, verify explicit whitelist
         if (AllowedDriveRoots.Contains(driveRoot) ||
             AllowedDriveRoots.Contains(drive.Name) ||
             (!string.IsNullOrEmpty(serialNumber) && AllowedVolumeSerialNumbers.Contains(serialNumber)))
@@ -192,6 +201,7 @@ public class PathPolicy : IPathPolicy
 
         string trimmed = rawPath.Trim();
 
+        // 3.4 Raw UNC & Special device namespace check
         if (trimmed.StartsWith(@"\\") || trimmed.StartsWith("//"))
         {
             reason = "נתיבי רשת (UNC) ונתיבי התקן מיוחדים אינם מורשים במערכת.";
@@ -215,6 +225,7 @@ public class PathPolicy : IPathPolicy
             return false;
         }
 
+        // Check after normalization for UNC
         if (full.StartsWith(@"\\") || full.StartsWith("//") ||
             (Uri.TryCreate(full, UriKind.Absolute, out var uri) && uri.IsUnc))
         {
@@ -222,6 +233,7 @@ public class PathPolicy : IPathPolicy
             return false;
         }
 
+        // Validate reserved DOS device names in segments
         var segments = full.Split(new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar }, StringSplitOptions.RemoveEmptyEntries);
         foreach (var seg in segments)
         {
@@ -233,6 +245,7 @@ public class PathPolicy : IPathPolicy
             }
         }
 
+        // Ensure drive root exists and has drive letter format
         var root = Path.GetPathRoot(full);
         if (string.IsNullOrWhiteSpace(root) || root.Length < 2 || root[1] != ':')
         {
@@ -269,6 +282,7 @@ public class PathPolicy : IPathPolicy
             return false;
         }
 
+        // Check against dynamic system drive and C:\
         if (string.Equals(root, SystemDriveRoot, StringComparison.OrdinalIgnoreCase) ||
             string.Equals(root, @"C:\", StringComparison.OrdinalIgnoreCase) ||
             root.StartsWith("c:", StringComparison.OrdinalIgnoreCase))
@@ -277,6 +291,7 @@ public class PathPolicy : IPathPolicy
             return false;
         }
 
+        // If explicitly allowed directory, skip drive type check
         if (IsPathWithinAllowedExplicitDirectory(normalizedPath))
         {
             return true;
@@ -301,6 +316,7 @@ public class PathPolicy : IPathPolicy
         finalResolvedPath = path;
         reason = null;
 
+        // 3.3 WinAPI kernel-level canonical resolution
         string canonicalPath = Interop.GetFinalPath(path);
         if (!string.IsNullOrWhiteSpace(canonicalPath) &&
             !string.Equals(canonicalPath, path, StringComparison.OrdinalIgnoreCase))
@@ -320,6 +336,7 @@ public class PathPolicy : IPathPolicy
             finalResolvedPath = normalizedCanonical;
         }
 
+        // .NET built-in link target resolution for FileSystemInfo
         try
         {
             FileSystemInfo info = Directory.Exists(path) ? new DirectoryInfo(path) : new FileInfo(path);
@@ -373,7 +390,7 @@ public class PathPolicy : IPathPolicy
         }
         catch
         {
-            return true;
+            return true; // If attributes can't be read, treat as unsafe
         }
         return false;
     }
@@ -410,12 +427,14 @@ public class PathPolicy : IPathPolicy
         if (!ValidateReparsePoint(fullPath, out string resolvedPath, out reason))
             return false;
 
+        // Check if resolved path is still allowed
         if (!string.Equals(fullPath, resolvedPath, StringComparison.OrdinalIgnoreCase))
         {
             if (!ValidateLocation(resolvedPath, out reason))
                 return false;
         }
 
+        // Hidden / System directory check
         if (HasHiddenOrSystemAttribute(resolvedPath) || HasHiddenOrSystemAncestor(resolvedPath))
         {
             reason = "הגישה לתיקיות מוסתרות או תיקיות מערכת חסומה.";
@@ -516,7 +535,35 @@ public class PathPolicy : IPathPolicy
         return true;
     }
 
-    // 3.5 Validation for Rename
+    public bool CanDelete(string path, out string reason)
+    {
+        if (!TryNormalizePath(path, out string fullPath, out reason))
+            return false;
+
+        // 3.6 Solid check against deleting drive roots
+        var root = Path.GetPathRoot(fullPath);
+        if (string.Equals(root?.TrimEnd('\\', '/'), fullPath.TrimEnd('\\', '/'), StringComparison.OrdinalIgnoreCase))
+        {
+            reason = "חל איסור מוחלט על מחיקת כוננים!";
+            return false;
+        }
+
+        if (!ValidateLocation(fullPath, out reason))
+            return false;
+
+        if (!ValidateReparsePoint(fullPath, out string resolvedPath, out reason))
+            return false;
+
+        var resolvedRoot = Path.GetPathRoot(resolvedPath);
+        if (string.Equals(resolvedRoot?.TrimEnd('\\', '/'), resolvedPath.TrimEnd('\\', '/'), StringComparison.OrdinalIgnoreCase))
+        {
+            reason = "חל איסור מוחלט על מחיקת כוננים (זוהה קישור לשורש כונן)!";
+            return false;
+        }
+
+        return true;
+    }
+
     public bool CanRename(string oldPath, string newPath, out string reason)
     {
         if (!TryNormalizePath(oldPath, out string fullOld, out reason))
@@ -531,6 +578,7 @@ public class PathPolicy : IPathPolicy
         if (!ValidateLocation(fullNew, out reason))
             return false;
 
+        // Verify directory matches exactly (no path traversal across folders)
         var oldDir = Path.GetDirectoryName(fullOld);
         var newDir = Path.GetDirectoryName(fullNew);
         if (!string.Equals(oldDir, newDir, StringComparison.OrdinalIgnoreCase))
@@ -539,6 +587,7 @@ public class PathPolicy : IPathPolicy
             return false;
         }
 
+        // Verify extension remains identical
         var oldExt = Path.GetExtension(fullOld);
         var newExt = Path.GetExtension(fullNew);
         if (!string.Equals(oldExt, newExt, StringComparison.OrdinalIgnoreCase))
@@ -549,6 +598,4 @@ public class PathPolicy : IPathPolicy
 
         return true;
     }
-
-    public bool CanDelete(string path, out string reason) => throw new NotImplementedException();
 }
