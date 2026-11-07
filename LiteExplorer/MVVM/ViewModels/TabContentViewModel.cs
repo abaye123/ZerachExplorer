@@ -55,8 +55,11 @@ internal class TabContentViewModel : ViewModel, IDisposable
         get => tabPath;
         set
         {
-            SetValue(ref tabPath, value);
-            TabCommand = tabPath;
+            if (SetValue(ref tabPath, value))
+            {
+                TabCommand = tabPath;
+                InvalidateCommandStates();
+            }
         }
     }
 
@@ -71,7 +74,13 @@ internal class TabContentViewModel : ViewModel, IDisposable
     public FileSystemObject CurrentFileSystemObject
     {
         get => currentFileSystemObject;
-        set => SetValue(ref currentFileSystemObject, value);
+        set
+        {
+            if (SetValue(ref currentFileSystemObject, value))
+            {
+                InvalidateCommandStates();
+            }
+        }
     }
 
     private double progressPercent;
@@ -120,18 +129,18 @@ internal class TabContentViewModel : ViewModel, IDisposable
         this.driveEjectService = driveEjectService ?? App.Container?.GetService<IDriveEjectService>() ?? new DriveEjectService(this.pathPolicy);
 
         OpenCmd = new ActionCommand(OnOpenCmdExecuted);
-        DeleteCmd = new ActionCommand(OnDeletePath);
-        RenameCmd = new ActionCommand(OnRenameCmdExecuted);
+        DeleteCmd = new ActionCommand(OnDeletePath, CanDeleteExecute);
+        RenameCmd = new ActionCommand(OnRenameCmdExecuted, CanRenameExecute);
         BackCmd = new ActionCommand(OnBackCmdExecuted, CanBackCmdExecute);
         BackHome = new ActionCommand(OnBackHomeExecuted);
         CalculateFolderSizeCmd = new ActionCommand(OnCalculateFolderSizeExecuted);
         ResetOtzariaCmd = new ActionCommand(OnResetOtzariaCmdExecuted);
         OpenAboutCmd = new ActionCommand(OnOpenAboutCmdExecuted);
-        CopyCmd = new ActionCommand(OnCopyCmdExecuted);
-        CutCmd = new ActionCommand(OnCutCmdExecuted);
-        PasteCmd = new ActionCommand(OnPasteCmdExecuted);
-        CreateDirectoryCmd = new ActionCommand(OnCreateDirectoryCmdExecuted);
-        EjectDriveCmd = new ActionCommand(OnEjectDriveCmdExecuted);
+        CopyCmd = new ActionCommand(OnCopyCmdExecuted, CanCopyExecute);
+        CutCmd = new ActionCommand(OnCutCmdExecuted, CanCutExecute);
+        PasteCmd = new ActionCommand(OnPasteCmdExecuted, CanPasteExecute);
+        CreateDirectoryCmd = new ActionCommand(OnCreateDirectoryCmdExecuted, CanCreateDirectoryExecute);
+        EjectDriveCmd = new ActionCommand(OnEjectDriveCmdExecuted, CanEjectDriveExecute);
 
         OpenCmd.Execute(TabPath);
     }
@@ -148,6 +157,92 @@ internal class TabContentViewModel : ViewModel, IDisposable
 
     #endregion
 
+    #region Command State Evaluation (CanExecute)
+
+    private bool CanCopyExecute(object p) => HasSelectedOrCurrentItem(p);
+
+    private bool CanCutExecute(object p) => HasSelectedOrCurrentItem(p);
+
+    private bool CanPasteExecute(object p)
+    {
+        if (string.IsNullOrEmpty(TabPath) || !Directory.Exists(TabPath))
+            return false;
+
+        return HasClipboardData();
+    }
+
+    private bool CanDeleteExecute(object p) => HasSelectedOrCurrentItem(p);
+
+    private bool CanRenameExecute(object p)
+    {
+        if (p != null) return true;
+        if (selectedFileSystemObjects.Count == 1) return true;
+        return selectedFileSystemObjects.Count == 0 && CurrentFileSystemObject != null && !string.IsNullOrEmpty(CurrentFileSystemObject.Path);
+    }
+
+    private bool CanCreateDirectoryExecute(object p)
+    {
+        return !string.IsNullOrEmpty(TabPath) && Directory.Exists(TabPath);
+    }
+
+    private bool CanEjectDriveExecute(object p)
+    {
+        if (CurrentFileSystemObject != null && !string.IsNullOrEmpty(CurrentFileSystemObject.Path))
+            return true;
+        if (!string.IsNullOrEmpty(TabPath))
+            return true;
+        return selectedFileSystemObjects.Count > 0;
+    }
+
+    private bool HasSelectedOrCurrentItem(object p)
+    {
+        if (p != null && !string.IsNullOrEmpty(p.ToString()))
+            return true;
+
+        if (selectedFileSystemObjects.Count > 0)
+            return true;
+
+        return CurrentFileSystemObject != null && !string.IsNullOrEmpty(CurrentFileSystemObject.Path);
+    }
+
+    private static bool HasClipboardData()
+    {
+        lock (InternalClipboard)
+        {
+            if (InternalClipboard.Count > 0)
+                return true;
+        }
+
+        try
+        {
+            return Clipboard.ContainsFileDropList();
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static void InvalidateCommandStates()
+    {
+        try
+        {
+            if (Application.Current?.Dispatcher != null && !Application.Current.Dispatcher.CheckAccess())
+            {
+                Application.Current.Dispatcher.InvokeAsync(CommandManager.InvalidateRequerySuggested);
+            }
+            else
+            {
+                CommandManager.InvalidateRequerySuggested();
+            }
+        }
+        catch
+        {
+        }
+    }
+
+    #endregion
+
     #region Selection
 
     public void SetSelectedItems(IEnumerable<FileSystemObject> items)
@@ -157,6 +252,7 @@ internal class TabContentViewModel : ViewModel, IDisposable
         {
             selectedFileSystemObjects.AddRange(items);
         }
+        InvalidateCommandStates();
     }
 
     private List<string> GetSelectedOrCurrentPaths(object commandParameter = null)
@@ -209,6 +305,8 @@ internal class TabContentViewModel : ViewModel, IDisposable
         catch
         {
         }
+
+        InvalidateCommandStates();
     }
 
     private void OnCutCmdExecuted(object p)
@@ -232,6 +330,8 @@ internal class TabContentViewModel : ViewModel, IDisposable
         catch
         {
         }
+
+        InvalidateCommandStates();
     }
 
     private async void OnPasteCmdExecuted(object p)
@@ -435,6 +535,7 @@ internal class TabContentViewModel : ViewModel, IDisposable
         finally
         {
             IsLoading = false;
+            InvalidateCommandStates();
         }
     }
 
@@ -658,6 +759,7 @@ internal class TabContentViewModel : ViewModel, IDisposable
             }
 
             OpenTabPath();
+            InvalidateCommandStates();
 
             if (multiErrors.Count > 0)
             {
@@ -764,6 +866,7 @@ internal class TabContentViewModel : ViewModel, IDisposable
             }
 
             OpenTabPath();
+            InvalidateCommandStates();
             MessageBox.Show("המחיקה בוצעה בהצלחה (הועבר לסל המיחזור).", "המחיקה הצליחה", MessageBoxButton.OK, MessageBoxImage.Information, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
         }
         catch (Exception ex)
@@ -788,6 +891,7 @@ internal class TabContentViewModel : ViewModel, IDisposable
                         File.Delete(fullPath);
 
                     OpenTabPath();
+                    InvalidateCommandStates();
                     MessageBox.Show("המחיקה לצמיתות בוצעה בהצלחה.", "המחיקה הצליחה", MessageBoxButton.OK, MessageBoxImage.Information, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
                 }
                 catch (Exception ex2)
@@ -802,6 +906,13 @@ internal class TabContentViewModel : ViewModel, IDisposable
     private void OnRenameCmdExecuted(object p)
     {
         string rawPath = p?.ToString()?.Trim();
+
+        if (string.IsNullOrEmpty(rawPath))
+        {
+            var targets = GetSelectedOrCurrentPaths();
+            if (targets.Count == 1)
+                rawPath = targets[0];
+        }
 
         if (string.IsNullOrEmpty(rawPath) || !File.Exists(rawPath))
         {
@@ -872,6 +983,7 @@ internal class TabContentViewModel : ViewModel, IDisposable
 
             MessageBox.Show("השם שונה בהצלחה.", "שינוי שם", MessageBoxButton.OK, MessageBoxImage.Information, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
             OpenTabPath();
+            InvalidateCommandStates();
         }
         catch (Exception ex)
         {
@@ -1053,6 +1165,7 @@ internal class TabContentViewModel : ViewModel, IDisposable
         IsLoading = true;
 
         _ = LoadDirectoryContentsAsync(targetPath, scanId, token);
+        InvalidateCommandStates();
     }
 
     private async Task LoadDirectoryContentsAsync(string targetPath, long scanId, CancellationToken token)
