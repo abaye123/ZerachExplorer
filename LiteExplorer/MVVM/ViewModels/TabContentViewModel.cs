@@ -115,6 +115,7 @@ internal class TabContentViewModel : ViewModel, IDisposable
     {
         string rawPath = p?.ToString()?.Trim();
 
+        // If no path is provided, navigate to Home (Drives list)
         if (string.IsNullOrEmpty(rawPath))
         {
             TabPath = null;
@@ -170,41 +171,141 @@ internal class TabContentViewModel : ViewModel, IDisposable
 
     private void onDeletePath(object p)
     {
-        string path = p?.ToString();
+        string rawPath = p?.ToString()?.Trim();
 
-        if (string.IsNullOrEmpty(path) || path.Length < 5)
+        if (string.IsNullOrWhiteSpace(rawPath))
+            return;
+
+        // 3.6 Robust validation: Block drive deletion and verify path policy
+        if (!pathPolicy.CanDelete(rawPath, out var deleteReason))
         {
-            MessageBox.Show("לא ניתן למחוק כוננים", "שגיאה", MessageBoxButton.OK, MessageBoxImage.Information, MessageBoxResult.No, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
+            MessageBox.Show(deleteReason, "שגיאה במחיקה", MessageBoxButton.OK, MessageBoxImage.Warning, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
             return;
         }
 
-        MessageBoxResult result = MessageBox.Show(
-            $"האם אתה בטוח שאתה רוצה למחוק את {(Directory.Exists(path) ? "התיקיה" : "הקובץ")} במיקום:\n{path}?\nזוהי פעולה בלתי הפיכה!",
-            "אישור מחיקה",
-            MessageBoxButton.YesNo,
-            MessageBoxImage.Warning,
-            MessageBoxResult.No,
-            MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
+        string fullPath;
+        try
+        {
+            fullPath = Path.GetFullPath(rawPath);
+        }
+        catch
+        {
+            MessageBox.Show("נתיב בלתי תקין.", "שגיאה", MessageBoxButton.OK, MessageBoxImage.Error, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
+            return;
+        }
 
-        if (result == MessageBoxResult.Yes)
+        bool isDirectory = Directory.Exists(fullPath);
+        bool isFile = File.Exists(fullPath);
+
+        if (!isDirectory && !isFile)
+        {
+            MessageBox.Show("הפריט למחיקה אינו קיים במערכת.", "שגיאה", MessageBoxButton.OK, MessageBoxImage.Error, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
+            return;
+        }
+
+        // Count contents and check for hidden/system files before recursive delete
+        int fileCount = 0;
+        int dirCount = 0;
+        int hiddenCount = 0;
+
+        if (isDirectory)
         {
             try
             {
-                if (Directory.Exists(path))
+                var dirInfo = new DirectoryInfo(fullPath);
+                foreach (var fsi in dirInfo.EnumerateFileSystemInfos("*", SearchOption.AllDirectories))
                 {
-                    Directory.Delete(path, true);
-                }
-                else if (File.Exists(path))
-                {
-                    File.Delete(path);
-                }
+                    if ((fsi.Attributes & (FileAttributes.Hidden | FileAttributes.System)) != 0)
+                    {
+                        hiddenCount++;
+                    }
 
-                OpenTabPath();
-                MessageBox.Show("המחיקה בוצעה בהצלחה", "המחיקה הצליחה", MessageBoxButton.OK, MessageBoxImage.Information);
+                    if ((fsi.Attributes & FileAttributes.Directory) == FileAttributes.Directory)
+                        dirCount++;
+                    else
+                        fileCount++;
+                }
             }
-            catch (Exception ex)
+            catch
             {
-                MessageBox.Show($"המחיקה נכשלה: {ex.Message}", "שגיאה", MessageBoxButton.OK, MessageBoxImage.Error);
+                // Inaccessible subfolder or count error - proceed cautiously
+            }
+        }
+
+        string confirmMessage;
+        if (isDirectory)
+        {
+            confirmMessage = $"האם אתה בטוח שברצונך למחוק את התיקייה:\n{fullPath}?\n\nפירוט תכולה:\n• מספר קבצים: {fileCount}\n• תתי-תיקיות: {dirCount}";
+            if (hiddenCount > 0)
+            {
+                confirmMessage += $"\n\n⚠️ שים לב: התיקייה מכילה {hiddenCount} פריטים מוסתרים או פריטי מערכת!";
+            }
+            confirmMessage += "\n\nהפריטים יועברו לסל המיחזור.";
+        }
+        else
+        {
+            confirmMessage = $"האם אתה בטוח שברצונך למחוק את הקובץ:\n{fullPath}?\n\nהקובץ יועבר לסל המיחזור.";
+        }
+
+        MessageBoxResult result = MessageBox.Show(
+            confirmMessage,
+            "אישור מחיקה",
+            MessageBoxButton.YesNo,
+            hiddenCount > 0 ? MessageBoxImage.Warning : MessageBoxImage.Question,
+            MessageBoxResult.No,
+            MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
+
+        if (result != MessageBoxResult.Yes)
+            return;
+
+        // 3.6 Send to Recycle Bin instead of permanent recursive wipeout
+        try
+        {
+            if (isDirectory)
+            {
+                Microsoft.VisualBasic.FileIO.FileSystem.DeleteDirectory(
+                    fullPath,
+                    Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs,
+                    Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
+            }
+            else
+            {
+                Microsoft.VisualBasic.FileIO.FileSystem.DeleteFile(
+                    fullPath,
+                    Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs,
+                    Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
+            }
+
+            OpenTabPath();
+            MessageBox.Show("המחיקה בוצעה בהצלחה (הועבר לסל המיחזור).", "המחיקה הצליחה", MessageBoxButton.OK, MessageBoxImage.Information, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
+        }
+        catch (Exception ex)
+        {
+            // If drive does not support Recycle Bin (e.g. FAT32 USB), ask explicit confirmation
+            var fallbackResult = MessageBox.Show(
+                $"לא ניתן היה להעביר את הפריט לסל המיחזור ({ex.Message}).\nהאם ברצונך למחוק לצמיתות את הפריט?",
+                "אזהרת מחיקה לצמיתות",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning,
+                MessageBoxResult.No,
+                MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
+
+            if (fallbackResult == MessageBoxResult.Yes)
+            {
+                try
+                {
+                    if (isDirectory)
+                        Directory.Delete(fullPath, true);
+                    else
+                        File.Delete(fullPath);
+
+                    OpenTabPath();
+                    MessageBox.Show("המחיקה לצמיתות בוצעה בהצלחה.", "המחיקה הצליחה", MessageBoxButton.OK, MessageBoxImage.Information, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
+                }
+                catch (Exception ex2)
+                {
+                    MessageBox.Show($"המחיקה נכשלה: {ex2.Message}", "שגיאה", MessageBoxButton.OK, MessageBoxImage.Error, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
+                }
             }
         }
     }
@@ -495,6 +596,7 @@ internal class TabContentViewModel : ViewModel, IDisposable
     {
         if (TabPath == null)
         {
+            // 3.7 Whitelist drive enumeration
             var visibleDrives = pathPolicy.GetAllowedDrives().ToList();
             var driveCount = visibleDrives.Count;
             int processedDrives = 0;
@@ -540,6 +642,7 @@ internal class TabContentViewModel : ViewModel, IDisposable
                 }
                 catch
                 {
+                    // Skip drive if error occurs
                 }
 
                 processedDrives++;
@@ -551,6 +654,7 @@ internal class TabContentViewModel : ViewModel, IDisposable
         {
             try
             {
+                // Verify navigation permission again inside worker thread
                 if (!pathPolicy.CanNavigate(TabPath, out var navReason))
                 {
                     Application.Current.Dispatcher.Invoke(() =>
@@ -589,7 +693,7 @@ internal class TabContentViewModel : ViewModel, IDisposable
                             Image = FolderManager.GetImageSource(directory, ItemState.Undefined),
                             Name = directoryInfo.Name,
                             Path = directory,
-                            Size = 0,
+                            Size = 0, // Avoid freezing UI on large folders or unauthorized sub-trees
                             TotalSpace = 012345667658675846,
                             FreeSpace = 012345667658675846,
                             Format = directoryInfo.LastWriteTime.ToString()
