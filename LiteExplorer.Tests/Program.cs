@@ -1,15 +1,19 @@
+using LiteExplorer.Helpers;
+using LiteExplorer.MVVM.ViewModels;
 using LiteExplorer.Services;
 using System;
 using System.IO;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace LiteExplorer.Tests;
 
 public class Program
 {
-    public static int Main()
+    public static async Task<int> Main()
     {
-        Console.WriteLine("Running Security Policy Tests (Sections 3.1 - 3.7)...");
+        Console.WriteLine("Running LiteExplorer Test Suite (Stage 0 & Stage 1)...");
         int passed = 0;
         int failed = 0;
 
@@ -83,6 +87,78 @@ public class Program
         Assert(!customPolicy.AllowedExtensions.Contains(".exe"), "3.2 Disallowed extensions does not contain .exe");
         Assert(!customPolicy.AllowedExtensions.Contains(".bat"), "3.2 Disallowed extensions does not contain .bat");
         Assert(!customPolicy.AllowedExtensions.Contains(".ps1"), "3.2 Disallowed extensions does not contain .ps1");
+
+        // ==========================================
+        // Stage 1 Tests (Sections 4.2, 4.3, 4.4, 4.5)
+        // ==========================================
+
+        // 4.3: CrashLogger writes exception and info messages
+        try
+        {
+            var testEx = new InvalidOperationException("Test unhandled exception for Stage 1 verification");
+            CrashLogger.LogException(testEx, "Unit Testing Suite");
+            CrashLogger.LogMessage("Unit test verification message", "TEST");
+
+            Assert(File.Exists(CrashLogger.LogFilePath), "4.3 CrashLogger creates log file on disk");
+            string logContent = File.ReadAllText(CrashLogger.LogFilePath);
+            Assert(logContent.Contains("[CRASH REPORT]"), "4.3 Crash report contains header");
+            Assert(logContent.Contains("Test unhandled exception"), "4.3 Crash report contains exception message");
+            Assert(logContent.Contains("Unit test verification message"), "4.3 Crash report contains custom message");
+        }
+        catch (Exception ex)
+        {
+            Assert(false, "4.3 CrashLogger execution threw unexpected exception", ex.Message);
+        }
+
+        // 4.5: Icon cache clearing
+        try
+        {
+            FileManager.ClearCache();
+            FolderManager.ClearCache();
+            Assert(true, "4.5 Icon caches cleared without error");
+        }
+        catch (Exception ex)
+        {
+            Assert(false, "4.5 Icon cache clear threw exception", ex.Message);
+        }
+
+        // 4.2 & 4.4: Lazy on-demand folder size calculation and cancellation
+        string tempDir = Path.Combine(Path.GetTempPath(), "ZerachExplorerTest_" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(tempDir);
+            string subDir = Path.Combine(tempDir, "SubDir");
+            Directory.CreateDirectory(subDir);
+
+            byte[] bytes1 = new byte[1024]; // 1 KB
+            byte[] bytes2 = new byte[2048]; // 2 KB
+            File.WriteAllBytes(Path.Combine(tempDir, "file1.bin"), bytes1);
+            File.WriteAllBytes(Path.Combine(subDir, "file2.bin"), bytes2);
+
+            long calculatedSize = await TabContentViewModel.CalculateDirectorySizeAsync(tempDir);
+            Assert(calculatedSize == 3072, $"4.2 Folder size calculated correctly (expected 3072, got {calculatedSize})");
+
+            // Test cancellation support
+            using var cts = new CancellationTokenSource();
+            cts.Cancel();
+            bool wasCancelled = false;
+            try
+            {
+                await TabContentViewModel.CalculateDirectorySizeAsync(tempDir, cts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                wasCancelled = true;
+            }
+            Assert(wasCancelled, "4.4 Directory calculation honors cancellation token");
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+            {
+                try { Directory.Delete(tempDir, true); } catch { }
+            }
+        }
 
         Console.WriteLine($"\nTest Results: {passed} passed, {failed} failed.");
         return failed == 0 ? 0 : 1;
