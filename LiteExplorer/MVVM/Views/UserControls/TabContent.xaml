@@ -22,30 +22,119 @@
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <Grid Grid.Row="0" FlowDirection="RightToLeft">
+        <!-- Command Toolbar (Windows Explorer Ribbon Bar) -->
+        <Border Grid.Row="0"
+                FlowDirection="RightToLeft"
+                BorderThickness="0,0,0,1"
+                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                Padding="6,4">
+            <Border.Resources>
+                <Style TargetType="ui:Button" BasedOn="{StaticResource {x:Type ui:Button}}">
+                    <Setter Property="Background" Value="Transparent" />
+                    <Setter Property="BorderBrush" Value="Transparent" />
+                    <Setter Property="Height" Value="36" />
+                    <Setter Property="Margin" Value="2,0" />
+                    <Setter Property="Padding" Value="8,4" />
+                    <Setter Property="FontSize" Value="13" />
+                    <Setter Property="FontWeight" Value="SemiBold" />
+                    <Style.Triggers>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.32" />
+                        </Trigger>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter Property="Background" Value="{DynamicResource SubtleFillColorTertiaryBrush}" />
+                        </Trigger>
+                    </Style.Triggers>
+                </Style>
+                <Style TargetType="Separator">
+                    <Setter Property="Width" Value="1" />
+                    <Setter Property="Margin" Value="6,4" />
+                    <Setter Property="Background" Value="{DynamicResource CardStrokeColorDefaultBrush}" />
+                </Style>
+            </Border.Resources>
+
+            <DockPanel LastChildFill="False">
+                <StackPanel Orientation="Horizontal" DockPanel.Dock="Right">
+                    <ui:Button Command="{Binding CreateDirectoryCmd}"
+                               Icon="FolderAdd24"
+                               Content="תיקייה חדשה"
+                               ToolTip="תיקייה חדשה (Ctrl+Shift+N)" />
+
+                    <Separator />
+
+                    <ui:Button Command="{Binding CutCmd}"
+                               Icon="Cut24"
+                               Width="38"
+                               Padding="0"
+                               ToolTip="גזור (Ctrl+X)" />
+
+                    <ui:Button Command="{Binding CopyCmd}"
+                               Icon="Copy24"
+                               Width="38"
+                               Padding="0"
+                               ToolTip="העתק (Ctrl+C)" />
+
+                    <ui:Button Command="{Binding PasteCmd}"
+                               Icon="ClipboardPaste24"
+                               Width="38"
+                               Padding="0"
+                               ToolTip="הדבק (Ctrl+V)" />
+
+                    <ui:Button Command="{Binding RenameCmd}"
+                               CommandParameter="{Binding CurrentFileSystemObject.Path}"
+                               Icon="Rename24"
+                               Width="38"
+                               Padding="0"
+                               ToolTip="שינוי שם (F2)" />
+
+                    <ui:Button Command="{Binding DeleteCmd}"
+                               CommandParameter="{Binding CurrentFileSystemObject.Path}"
+                               Icon="Delete24"
+                               Width="38"
+                               Padding="0"
+                               ToolTip="מחק (Delete)" />
+
+                    <Separator />
+
+                    <ui:Button Command="{Binding EjectDriveCmd}"
+                               Icon="UsbPlug24"
+                               Content="הוצאה בטוחה"
+                               ToolTip="הוצאה בטוחה של כונן נשלף" />
+                </StackPanel>
+
+                <ui:Button DockPanel.Dock="Left"
+                           Command="{Binding OpenAboutCmd}"
+                           CommandParameter="{Binding TabPath}"
+                           Icon="Info24"
+                           Width="38"
+                           Padding="0"
+                           ToolTip="אודות והגדרות" />
+            </DockPanel>
+        </Border>
+
+        <!-- Navigation & Address Bar -->
+        <Grid Grid.Row="1" FlowDirection="RightToLeft" Margin="4,4,4,4">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
 
             <ui:Button Grid.Column="0"
                        Command="{Binding BackHome}"
                        Icon="Home32"
-                       Content="בית"
                        BorderBrush="Transparent"
                        Background="Transparent"
                        Height="38"
-                       ToolTip="בית" />
+                       Width="40"
+                       Padding="0"
+                       ToolTip="בית (כל הכוננים)" />
 
             <ui:Button Grid.Column="1"
                        Command="{Binding BackCmd}"
@@ -53,12 +142,16 @@
                        BorderBrush="Transparent"
                        Background="Transparent"
                        Height="38"
-                       ToolTip="חזור אחורה (Backspace)" />
+                       Width="40"
+                       Padding="0"
+                       ToolTip="תיקיית אב (Backspace)" />
 
             <ui:TextBox Grid.Column="2"
+                        Margin="4,0"
                         HorizontalContentAlignment="Stretch"
                         Icon="Desktop32"
                         FlowDirection="RightToLeft"
+                        FontSize="13"
                         Text="{Binding TabPath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
                 <ui:TextBox.InputBindings>
                     <KeyBinding Gesture="Enter"
@@ -68,58 +161,20 @@
             </ui:TextBox>
 
             <ui:Button Grid.Column="3"
-                       Height="{Binding ActualWidth, RelativeSource={RelativeSource Self}}"
+                       Height="38"
+                       Width="40"
+                       Padding="0"
                        Command="{Binding OpenCmd}"
                        CommandParameter="{Binding TabPath}"
                        Icon="ArrowClockwise32"
                        BorderBrush="Transparent"
                        Background="Transparent"
                        ToolTip="פתח את הנתיב המצוין (רענן)" />
-
-            <ui:Button Grid.Column="4"
-                       Height="{Binding ActualWidth, RelativeSource={RelativeSource Self}}"
-                       Command="{Binding CreateDirectoryCmd}"
-                       Icon="FolderAdd24"
-                       BorderBrush="Transparent"
-                       Background="Transparent"
-                       ToolTip="תיקייה חדשה (Ctrl+Shift+N)" />
-
-            <ui:Button Grid.Column="5"
-                       Height="{Binding ActualWidth, RelativeSource={RelativeSource Self}}"
-                       Command="{Binding CopyCmd}"
-                       Icon="Copy24"
-                       BorderBrush="Transparent"
-                       Background="Transparent"
-                       ToolTip="העתק (Ctrl+C)" />
-
-            <ui:Button Grid.Column="6"
-                       Height="{Binding ActualWidth, RelativeSource={RelativeSource Self}}"
-                       Command="{Binding PasteCmd}"
-                       Icon="ClipboardPaste24"
-                       BorderBrush="Transparent"
-                       Background="Transparent"
-                       ToolTip="הדבק (Ctrl+V)" />
-
-            <ui:Button Grid.Column="7"
-                       Height="{Binding ActualWidth, RelativeSource={RelativeSource Self}}"
-                       Command="{Binding EjectDriveCmd}"
-                       Icon="UsbPlug24"
-                       BorderBrush="Transparent"
-                       Background="Transparent"
-                       ToolTip="הוצאה בטוחה של כונן נשלף" />
-
-            <ui:Button Grid.Column="8"
-                       Height="{Binding ActualWidth, RelativeSource={RelativeSource Self}}"
-                       Command="{Binding OpenAboutCmd}"
-                       CommandParameter="{Binding TabPath}"
-                       Icon="Info24"
-                       BorderBrush="Transparent"
-                       Background="Transparent"
-                       ToolTip="אודות והגדרות" HorizontalAlignment="Center" VerticalAlignment="Stretch" />
         </Grid>
 
+        <!-- File List -->
         <ListView x:Name="items"
-                  Grid.Row="1"
+                  Grid.Row="2"
                   FlowDirection="RightToLeft"
                   ItemsSource="{Binding FileSystemObjects}"
                   SelectedItem="{Binding CurrentFileSystemObject}"
@@ -147,19 +202,19 @@
                               CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=ListView}, Path=SelectedItem.Path}"
                               Header="פתח" />
                     <Separator />
-                    <MenuItem Command="{Binding DataContext.CopyCmd, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                              Header="העתק (Ctrl+C)" />
                     <MenuItem Command="{Binding DataContext.CutCmd, RelativeSource={RelativeSource AncestorType=UserControl}}"
                               Header="גזור (Ctrl+X)" />
+                    <MenuItem Command="{Binding DataContext.CopyCmd, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                              Header="העתק (Ctrl+C)" />
                     <MenuItem Command="{Binding DataContext.PasteCmd, RelativeSource={RelativeSource AncestorType=UserControl}}"
                               Header="הדבק (Ctrl+V)" />
                     <Separator />
-                    <MenuItem Command="{Binding DataContext.DeleteCmd, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                              CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=ListView}, Path=SelectedItem.Path}"
-                              Header="מחק (Delete)" />
                     <MenuItem Command="{Binding DataContext.RenameCmd, RelativeSource={RelativeSource AncestorType=UserControl}}"
                               CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=ListView}, Path=SelectedItem.Path}"
                               Header="שינוי שם (F2)" />
+                    <MenuItem Command="{Binding DataContext.DeleteCmd, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                              CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=ListView}, Path=SelectedItem.Path}"
+                              Header="מחק (Delete)" />
                     <MenuItem Command="{Binding DataContext.CreateDirectoryCmd, RelativeSource={RelativeSource AncestorType=UserControl}}"
                               Header="תיקייה חדשה (Ctrl+Shift+N)" />
                     <Separator />
@@ -190,6 +245,18 @@
                             Gesture="Backspace" />
                 <KeyBinding Command="{Binding DeleteCmd}"
                             Key="Delete" />
+                <KeyBinding Command="{Binding RenameCmd}"
+                            CommandParameter="{Binding CurrentFileSystemObject.Path}"
+                            Key="F2" />
+                <KeyBinding Command="{Binding CopyCmd}"
+                            Modifiers="Ctrl"
+                            Key="C" />
+                <KeyBinding Command="{Binding CutCmd}"
+                            Modifiers="Ctrl"
+                            Key="X" />
+                <KeyBinding Command="{Binding PasteCmd}"
+                            Modifiers="Ctrl"
+                            Key="V" />
             </ListView.InputBindings>
 
             <ListView.ItemTemplate>
