@@ -78,6 +78,7 @@ public class PathPolicy : IPathPolicy
             : path + Path.DirectorySeparatorChar;
     }
 
+    // 3.7 Whitelist drive validation with Volume Serial Number
     public bool IsDriveAllowed(DriveInfo drive, out string reason)
     {
         reason = null;
@@ -103,7 +104,59 @@ public class PathPolicy : IPathPolicy
             return false;
         }
 
-        return true;
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(drive.VolumeLabel))
+            {
+                var label = drive.VolumeLabel.Trim();
+                if (BlockedVolumeLabels.Contains(label) ||
+                    label.IndexOf("Otzar", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    label.Contains("אוצר החוכמה"))
+                {
+                    reason = "הגישה לכונני תוכנת 'אוצר החוכמה' חסומה.";
+                    return false;
+                }
+            }
+        }
+        catch
+        {
+        }
+
+        try
+        {
+            if (File.Exists(Path.Combine(driveRoot, "otzar.exe")) ||
+                File.Exists(Path.Combine(driveRoot, "Otzar.exe")) ||
+                Directory.Exists(Path.Combine(driveRoot, "Otzar")))
+            {
+                reason = "הגישה לכונני תוכנת 'אוצר החוכמה' חסומה.";
+                return false;
+            }
+        }
+        catch
+        {
+        }
+
+        string serialNumber = Interop.GetVolumeSerialNumber(driveRoot);
+        if (!string.IsNullOrEmpty(serialNumber) && BlockedVolumeSerialNumbers.Contains(serialNumber))
+        {
+            reason = "הגישה לכונן זה נחסמה לפי מזהה אמצעי האחסון.";
+            return false;
+        }
+
+        if (drive.DriveType == DriveType.Removable)
+        {
+            return true;
+        }
+
+        if (AllowedDriveRoots.Contains(driveRoot) ||
+            AllowedDriveRoots.Contains(drive.Name) ||
+            (!string.IsNullOrEmpty(serialNumber) && AllowedVolumeSerialNumbers.Contains(serialNumber)))
+        {
+            return true;
+        }
+
+        reason = "הכונן אינו מורשה. המערכת מאפשרת גישה לכוננים נשלפים (USB) בלבד.";
+        return false;
     }
 
     public IEnumerable<DriveInfo> GetAllowedDrives()
@@ -304,7 +357,6 @@ public class PathPolicy : IPathPolicy
         return true;
     }
 
-    // 3.2 Hidden and system attributes validation
     private static bool HasHiddenOrSystemAttribute(string path)
     {
         try
@@ -432,7 +484,40 @@ public class PathPolicy : IPathPolicy
         }
     }
 
-    public bool CanOpenFile(string filePath, out string reason) => throw new NotImplementedException();
+    // 3.2 Opening authorized files only
+    public bool CanOpenFile(string filePath, out string reason)
+    {
+        if (!TryNormalizePath(filePath, out string fullPath, out reason))
+            return false;
+
+        if (!ValidateLocation(fullPath, out reason))
+            return false;
+
+        if (!ValidateReparsePoint(fullPath, out string resolvedPath, out reason))
+            return false;
+
+        if (!string.Equals(fullPath, resolvedPath, StringComparison.OrdinalIgnoreCase))
+        {
+            if (!ValidateLocation(resolvedPath, out reason))
+                return false;
+        }
+
+        if (HasHiddenOrSystemAttribute(resolvedPath) || HasHiddenOrSystemAncestor(resolvedPath))
+        {
+            reason = "חל איסור על פתיחת קובצי מערכת או קבצים מוסתרים.";
+            return false;
+        }
+
+        string ext = Path.GetExtension(resolvedPath)?.ToLowerInvariant();
+        if (string.IsNullOrEmpty(ext) || !allowedExtensions.Contains(ext))
+        {
+            reason = $"סוג הקובץ '{ext}' אינו מאושר לפתיחה במערכת.";
+            return false;
+        }
+
+        return true;
+    }
+
     public bool CanDelete(string path, out string reason) => throw new NotImplementedException();
     public bool CanRename(string oldPath, string newPath, out string reason) => throw new NotImplementedException();
 }
