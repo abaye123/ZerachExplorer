@@ -217,48 +217,86 @@ internal class TabContentViewModel : ViewModel, IDisposable
 
     private void OnRenameCmdExecuted(object p)
     {
-        string path = p?.ToString();
+        string rawPath = p?.ToString()?.Trim();
 
-        if (string.IsNullOrEmpty(path) || !File.Exists(path))
+        if (string.IsNullOrEmpty(rawPath) || !File.Exists(rawPath))
         {
-            MessageBox.Show("ניתן לשנות שם לקבצים בלבד", "שגיאה", MessageBoxButton.OK, MessageBoxImage.Error, MessageBoxResult.No, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
+            MessageBox.Show("ניתן לשנות שם לקבצים בלבד.", "שגיאה", MessageBoxButton.OK, MessageBoxImage.Error, MessageBoxResult.No, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
+            return;
+        }
+
+        // 3.5 Verify that user is allowed to access/rename this file
+        if (!pathPolicy.CanOpenFile(rawPath, out var checkReason))
+        {
+            MessageBox.Show($"לא ניתן לשנות שם לקובץ זה:\n{checkReason}", "גישה נדחתה", MessageBoxButton.OK, MessageBoxImage.Warning, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
             return;
         }
 
         try
         {
-            var fileInfo = new FileInfo(path);
-            string currentFileName = Path.GetFileNameWithoutExtension(path);
-            string fileExtension = Path.GetExtension(path);
+            var fileInfo = new FileInfo(Path.GetFullPath(rawPath));
+            string currentFileName = Path.GetFileNameWithoutExtension(fileInfo.FullName);
+            string fileExtension = fileInfo.Extension;
 
+            // Prompt user for new file name
             string newFileName = Microsoft.VisualBasic.Interaction.InputBox(
-                "הכנס את השם חדש לקובץ:",
+                "הכנס את השם החדש לקובץ:",
                 "שינוי שם הקובץ",
                 currentFileName
             );
 
-            if (string.IsNullOrWhiteSpace(newFileName) || newFileName == currentFileName)
+            if (string.IsNullOrWhiteSpace(newFileName))
+                return;
+
+            newFileName = newFileName.Trim();
+            if (string.Equals(newFileName, currentFileName, StringComparison.OrdinalIgnoreCase))
             {
-                MessageBox.Show("שם הקובץ לא שונה", "שינוי שם", MessageBoxButton.OK, MessageBoxImage.Information);
+                MessageBox.Show("שם הקובץ לא שונה.", "שינוי שם", MessageBoxButton.OK, MessageBoxImage.Information, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
                 return;
             }
 
-            string newPath = Path.Combine(fileInfo.DirectoryName, newFileName + fileExtension);
+            // 3.5 Prevent Path Traversal in Rename
+            char[] invalidChars = Path.GetInvalidFileNameChars();
+            if (newFileName.IndexOfAny(invalidChars) >= 0 ||
+                newFileName.Contains('/') ||
+                newFileName.Contains('\\') ||
+                newFileName.Contains(".."))
+            {
+                MessageBox.Show("שם הקובץ מכיל תווים בלתי חוקיים או ניסיון לניווט נתיב.", "שגיאה", MessageBoxButton.OK, MessageBoxImage.Error, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
+                return;
+            }
+
+            string combinedName = newFileName + fileExtension;
+            string newPath = Path.Combine(fileInfo.DirectoryName, combinedName);
+
+            // Verify directory remains identical
+            if (!string.Equals(Path.GetDirectoryName(newPath), fileInfo.DirectoryName, StringComparison.OrdinalIgnoreCase))
+            {
+                MessageBox.Show("ניסיון לעקוף נתיב (Path Traversal) זוהה ונחסם.", "אבטחה", MessageBoxButton.OK, MessageBoxImage.Error, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
+                return;
+            }
+
+            // Validate against policy
+            if (!pathPolicy.CanRename(fileInfo.FullName, newPath, out var renameReason))
+            {
+                MessageBox.Show(renameReason, "שגיאת מדיניות", MessageBoxButton.OK, MessageBoxImage.Error, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
+                return;
+            }
 
             if (File.Exists(newPath))
             {
-                MessageBox.Show("קובץ עם שם זה כבר קיים.", "שגיאה", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show("קובץ עם שם זה כבר קיים.", "שגיאה", MessageBoxButton.OK, MessageBoxImage.Error, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
                 return;
             }
 
-            File.Move(path, newPath);
+            File.Move(fileInfo.FullName, newPath);
 
-            MessageBox.Show("השם שונה בהצלחה", "שינוי שם", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show("השם שונה בהצלחה.", "שינוי שם", MessageBoxButton.OK, MessageBoxImage.Information, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
             OpenTabPath();
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"שינוי השם נכשל: {ex.Message}", "שגיאה", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show($"שינוי השם נכשל: {ex.Message}", "שגיאה", MessageBoxButton.OK, MessageBoxImage.Error, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
         }
     }
 
