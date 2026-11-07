@@ -4,15 +4,15 @@ using LiteExplorer.Infrastructure.Commands;
 using LiteExplorer.MVVM.Models;
 using LiteExplorer.MVVM.ViewModels.Base;
 using LiteExplorer.MVVM.Views.Windows;
+using LiteExplorer.Services;
+using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
-using System.DirectoryServices.ActiveDirectory;
 using System.IO;
 using System.Linq;
-using System.Reflection;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Threading;
@@ -21,11 +21,12 @@ namespace LiteExplorer.MVVM.ViewModels;
 
 internal class TabContentViewModel : ViewModel, IDisposable
 {
+    private const long NotApplicableSpaceSentinel = 12345667658675846L;
+
     #region Private fields
 
     private readonly BackgroundWorker worker;
-
-    string[] allowedExtensions = { ".doc", ".docx", ".xls", ".xlsx", ".pdf", ".txt", ".csv", ".onetoc2", ".one" };
+    private readonly IPathPolicy pathPolicy;
 
     #endregion
 
@@ -106,8 +107,6 @@ internal class TabContentViewModel : ViewModel, IDisposable
 
     public ICommand RunCmd { get; }
 
-    //private void OnRunCmdExecuted(object p) => Process.Start(new ProcessStartInfo("cmd", $"/k {p}") { WorkingDirectory = TabPath ?? Environment.SystemDirectory });
-
     #endregion
 
     #region Open
@@ -116,40 +115,51 @@ internal class TabContentViewModel : ViewModel, IDisposable
 
     private void OnOpenCmdExecuted(object p)
     {
-        string path = p?.ToString();
+        string rawPath = p?.ToString()?.Trim();
 
-        if (path is null || Directory.Exists(path))
+        if (string.IsNullOrEmpty(rawPath))
         {
-            TabPath = path;
+            TabPath = null;
+            OpenTabPath();
+            return;
+        }
 
+        if (Directory.Exists(rawPath))
+        {
+            if (!pathPolicy.CanNavigate(rawPath, out var reason))
+            {
+                MessageBox.Show(reason, "׳’׳™׳©׳” ׳ ׳“׳—׳×׳”", MessageBoxButton.OK, MessageBoxImage.Warning, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
+                return;
+            }
+
+            TabPath = Path.GetFullPath(rawPath);
             OpenTabPath();
         }
-        else if (File.Exists(path))
+        else if (File.Exists(rawPath))
         {
+            if (!pathPolicy.CanOpenFile(rawPath, out var reason))
+            {
+                MessageBox.Show(reason, "׳’׳™׳©׳” ׳ ׳“׳—׳×׳”", MessageBoxButton.OK, MessageBoxImage.Warning, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
+                return;
+            }
+
             try
             {
-                var fileInfo = new FileInfo(path);
-
-                if (Array.IndexOf(allowedExtensions, fileInfo.Extension.ToLower()) >= 0)
-                {
-                    Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
-                }
-                else
-                {
-                    //MessageBox.Show("סוג הקובץ אינו נתמך.", "שגיאה", MessageBoxButton.OK, MessageBoxImage.Error);
-                    MessageBox.Show("סוג הקובץ אינו נתמך", "שגיאה", MessageBoxButton.OK, MessageBoxImage.Error, MessageBoxResult.No, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
-                }
-
+                var fullFilePath = Path.GetFullPath(rawPath);
+                Process.Start(new ProcessStartInfo(fullFilePath) { UseShellExecute = true });
             }
             catch (Win32Exception ex)
             {
                 MessageBox.Show(ex.Message, $"Error: {ex.NativeErrorCode}", MessageBoxButton.OK, MessageBoxImage.Error);
             }
+            catch (Exception ex)
+            {
+                MessageBox.Show(ex.Message, "׳©׳’׳™׳׳” ׳‘׳₪׳×׳™׳—׳× ׳”׳§׳•׳‘׳¥", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
         }
         else
         {
-            //Process.Start(new ProcessStartInfo($"https://www.google.com/?q={Uri.EscapeDataString(path)}") { UseShellExecute = true });
-            MessageBox.Show("ERROR", $"Error: {path}", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show($"׳”׳ ׳×׳™׳‘ ׳”׳׳‘׳•׳§׳© ׳׳™׳ ׳• ׳§׳™׳™׳ ׳׳• ׳©׳׳™׳ ׳• ׳ ׳’׳™׳©:\n{rawPath}", "׳©׳’׳™׳׳”", MessageBoxButton.OK, MessageBoxImage.Error, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
         }
     }
 
@@ -159,45 +169,139 @@ internal class TabContentViewModel : ViewModel, IDisposable
 
     public ICommand DeleteCmd { get; }
 
-    private void onDeletePath(object p)
+    private void OnDeletePath(object p)
     {
-        string path = p?.ToString();
+        string rawPath = p?.ToString()?.Trim();
 
-        if (string.IsNullOrEmpty(path) || path.Length < 5)
+        if (string.IsNullOrWhiteSpace(rawPath))
+            return;
+
+        if (!pathPolicy.CanDelete(rawPath, out var deleteReason))
         {
-            MessageBox.Show("לא ניתן למחוק כוננים", "שגיאה", MessageBoxButton.OK, MessageBoxImage.Information, MessageBoxResult.No, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
-            
+            MessageBox.Show(deleteReason, "׳©׳’׳™׳׳” ׳‘׳׳—׳™׳§׳”", MessageBoxButton.OK, MessageBoxImage.Warning, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
             return;
         }
 
-        MessageBoxResult result = MessageBox.Show(
-            $"האם אתה בטוח שאתה רוצה למחוק את {(Directory.Exists(path) ? "התיקיה" : "הקובץ")} במיקום:\n{path}?\nזוהי פעולה בלתי הפיכה!",
-            "אישור מחיקה",
-            MessageBoxButton.YesNo,
-            MessageBoxImage.Warning,
-            MessageBoxResult.No,
-            MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
+        string fullPath;
+        try
+        {
+            fullPath = Path.GetFullPath(rawPath);
+        }
+        catch
+        {
+            MessageBox.Show("׳ ׳×׳™׳‘ ׳‘׳׳×׳™ ׳×׳§׳™׳.", "׳©׳’׳™׳׳”", MessageBoxButton.OK, MessageBoxImage.Error, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
+            return;
+        }
 
-        if (result == MessageBoxResult.Yes)
+        bool isDirectory = Directory.Exists(fullPath);
+        bool isFile = File.Exists(fullPath);
+
+        if (!isDirectory && !isFile)
+        {
+            MessageBox.Show("׳”׳₪׳¨׳™׳˜ ׳׳׳—׳™׳§׳” ׳׳™׳ ׳• ׳§׳™׳™׳ ׳‘׳׳¢׳¨׳›׳×.", "׳©׳’׳™׳׳”", MessageBoxButton.OK, MessageBoxImage.Error, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
+            return;
+        }
+
+        int fileCount = 0;
+        int dirCount = 0;
+        int hiddenCount = 0;
+
+        if (isDirectory)
         {
             try
             {
-                if (Directory.Exists(path))
+                var dirInfo = new DirectoryInfo(fullPath);
+                foreach (var fsi in dirInfo.EnumerateFileSystemInfos("*", SearchOption.AllDirectories))
                 {
-                    Directory.Delete(path, true);
-                }
-                else if (File.Exists(path))
-                {
-                    File.Delete(path);
-                }
+                    if ((fsi.Attributes & (FileAttributes.Hidden | FileAttributes.System)) != 0)
+                    {
+                        hiddenCount++;
+                    }
 
-                OpenTabPath();
-                MessageBox.Show("המחיקה בוצעה בהצלחה", "המחיקה הצליחה", MessageBoxButton.OK, MessageBoxImage.Information);
-                
+                    if ((fsi.Attributes & FileAttributes.Directory) == FileAttributes.Directory)
+                        dirCount++;
+                    else
+                        fileCount++;
+                }
             }
-            catch (Exception ex)
+            catch
             {
-                MessageBox.Show($"המחיקה נכשלה: {ex.Message}", "שגיאה", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        string confirmMessage;
+        if (isDirectory)
+        {
+            confirmMessage = $"׳”׳׳ ׳׳×׳” ׳‘׳˜׳•׳— ׳©׳‘׳¨׳¦׳•׳ ׳ ׳׳׳—׳•׳§ ׳׳× ׳”׳×׳™׳§׳™׳™׳”:\n{fullPath}?\n\n׳₪׳™׳¨׳•׳˜ ׳×׳›׳•׳׳”:\nג€¢ ׳׳¡׳₪׳¨ ׳§׳‘׳¦׳™׳: {fileCount}\nג€¢ ׳×׳×׳™-׳×׳™׳§׳™׳•׳×: {dirCount}";
+            if (hiddenCount > 0)
+            {
+                confirmMessage += "\n\nג ן¸ ׳©׳™׳ ׳׳‘: ׳”׳×׳™׳§׳™׳™׳” ׳׳›׳™׳׳” {hiddenCount} ׳₪׳¨׳™׳˜׳™׳ ׳׳•׳¡׳×׳¨׳™׳ ׳׳• ׳₪׳¨׳™׳˜׳™ ׳׳¢׳¨׳›׳×!";
+            }
+            confirmMessage += "\n\n׳”׳₪׳¨׳™׳˜׳™׳ ׳™׳•׳¢׳‘׳¨׳• ׳׳¡׳ ׳”׳׳™׳—׳–׳•׳¨.";
+        }
+        else
+        {
+            confirmMessage = $"׳”׳׳ ׳׳×׳” ׳‘׳˜׳•׳— ׳©׳‘׳¨׳¦׳•׳ ׳ ׳׳׳—׳•׳§ ׳׳× ׳”׳§׳•׳‘׳¥:\n{fullPath}?\n\n׳”׳§׳•׳‘׳¥ ׳™׳•׳¢׳‘׳¨ ׳׳¡׳ ׳”׳׳™׳—׳–׳•׳¨.";
+        }
+
+        MessageBoxResult result = MessageBox.Show(
+            confirmMessage,
+            "׳׳™׳©׳•׳¨ ׳׳—׳™׳§׳”",
+            MessageBoxButton.YesNo,
+            hiddenCount > 0 ? MessageBoxImage.Warning : MessageBoxImage.Question,
+            MessageBoxResult.No,
+            MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
+
+        if (result != MessageBoxResult.Yes)
+            return;
+
+        try
+        {
+            if (isDirectory)
+            {
+                Microsoft.VisualBasic.FileIO.FileSystem.DeleteDirectory(
+                    fullPath,
+                    Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs,
+                    Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
+            }
+            else
+            {
+                Microsoft.VisualBasic.FileIO.FileSystem.DeleteFile(
+                    fullPath,
+                    Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs,
+                    Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
+            }
+
+            OpenTabPath();
+            MessageBox.Show("׳”׳׳—׳™׳§׳” ׳‘׳•׳¦׳¢׳” ׳‘׳”׳¦׳׳—׳” (׳”׳•׳¢׳‘׳¨ ׳׳¡׳ ׳”׳׳™׳—׳–׳•׳¨).", "׳”׳׳—׳™׳§׳” ׳”׳¦׳׳™׳—׳”", MessageBoxButton.OK, MessageBoxImage.Information, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
+        }
+        catch (Exception ex)
+        {
+            // Prompt user if Recycle Bin is unsupported on the target volume.
+            var fallbackResult = MessageBox.Show(
+                $"׳׳ ׳ ׳™׳×׳ ׳”׳™׳” ׳׳”׳¢׳‘׳™׳¨ ׳׳× ׳”׳₪׳¨׳™׳˜ ׳׳¡׳ ׳”׳׳™׳—׳–׳•׳¨ ({ex.Message}).\n׳”׳׳ ׳‘׳¨׳¦׳•׳ ׳ ׳׳׳—׳•׳§ ׳׳¦׳׳™׳×׳•׳× ׳׳× ׳”׳₪׳¨׳™׳˜?",
+                "׳׳–׳”׳¨׳× ׳׳—׳™׳§׳” ׳׳¦׳׳™׳×׳•׳×",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning,
+                MessageBoxResult.No,
+                MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
+
+            if (fallbackResult == MessageBoxResult.Yes)
+            {
+                try
+                {
+                    if (isDirectory)
+                        Directory.Delete(fullPath, true);
+                    else
+                        File.Delete(fullPath);
+
+                    OpenTabPath();
+                    MessageBox.Show("׳”׳׳—׳™׳§׳” ׳׳¦׳׳™׳×׳•׳× ׳‘׳•׳¦׳¢׳” ׳‘׳”׳¦׳׳—׳”.", "׳”׳׳—׳™׳§׳” ׳”׳¦׳׳™׳—׳”", MessageBoxButton.OK, MessageBoxImage.Information, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
+                }
+                catch (Exception ex2)
+                {
+                    MessageBox.Show($"׳”׳׳—׳™׳§׳” ׳ ׳›׳©׳׳”: {ex2.Message}", "׳©׳’׳™׳׳”", MessageBoxButton.OK, MessageBoxImage.Error, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
+                }
             }
         }
     }
@@ -210,60 +314,89 @@ internal class TabContentViewModel : ViewModel, IDisposable
 
     private void OnRenameCmdExecuted(object p)
     {
-        string path = p?.ToString();
+        string rawPath = p?.ToString()?.Trim();
 
-        if (string.IsNullOrEmpty(path) || !File.Exists(path))
+        if (string.IsNullOrEmpty(rawPath) || !File.Exists(rawPath))
         {
-            MessageBox.Show("ניתן לשנות שם לקבצים בלבד", "שגיאה", MessageBoxButton.OK, MessageBoxImage.Error, MessageBoxResult.No, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
+            MessageBox.Show("׳ ׳™׳×׳ ׳׳©׳ ׳•׳× ׳©׳ ׳׳§׳‘׳¦׳™׳ ׳‘׳׳‘׳“.", "׳©׳’׳™׳׳”", MessageBoxButton.OK, MessageBoxImage.Error, MessageBoxResult.No, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
+            return;
+        }
+
+        if (!pathPolicy.CanOpenFile(rawPath, out var checkReason))
+        {
+            MessageBox.Show($"׳׳ ׳ ׳™׳×׳ ׳׳©׳ ׳•׳× ׳©׳ ׳׳§׳•׳‘׳¥ ׳–׳”:\n{checkReason}", "׳’׳™׳©׳” ׳ ׳“׳—׳×׳”", MessageBoxButton.OK, MessageBoxImage.Warning, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
             return;
         }
 
         try
         {
-            var fileInfo = new FileInfo(path);
-            string currentFileName = Path.GetFileNameWithoutExtension(path);
-            string fileExtension = Path.GetExtension(path);
+            var fileInfo = new FileInfo(Path.GetFullPath(rawPath));
+            string currentFileName = Path.GetFileNameWithoutExtension(fileInfo.FullName);
+            string fileExtension = fileInfo.Extension;
 
-            // פתיחת תיבת טקסט לבקשת שם חדש
             string newFileName = Microsoft.VisualBasic.Interaction.InputBox(
-                "הכנס את השם חדש לקובץ:",
-                "שינוי שם הקובץ",
+                "׳”׳›׳ ׳¡ ׳׳× ׳”׳©׳ ׳”׳—׳“׳© ׳׳§׳•׳‘׳¥:",
+                "׳©׳™׳ ׳•׳™ ׳©׳ ׳”׳§׳•׳‘׳¥",
                 currentFileName
             );
 
-            if (string.IsNullOrWhiteSpace(newFileName) || newFileName == currentFileName)
+            if (string.IsNullOrWhiteSpace(newFileName))
+                return;
+
+            newFileName = newFileName.Trim();
+            if (string.Equals(newFileName, currentFileName, StringComparison.OrdinalIgnoreCase))
             {
-                MessageBox.Show("שם הקובץ לא שונה", "שינוי שם", MessageBoxButton.OK, MessageBoxImage.Information);
+                MessageBox.Show("׳©׳ ׳”׳§׳•׳‘׳¥ ׳׳ ׳©׳•׳ ׳”.", "׳©׳™׳ ׳•׳™ ׳©׳", MessageBoxButton.OK, MessageBoxImage.Information, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
                 return;
             }
 
-            string newPath = Path.Combine(fileInfo.DirectoryName, newFileName + fileExtension);
+            char[] invalidChars = Path.GetInvalidFileNameChars();
+            if (newFileName.IndexOfAny(invalidChars) >= 0 ||
+                newFileName.Contains('/') ||
+                newFileName.Contains('\\') ||
+                newFileName.Contains(".."))
+            {
+                MessageBox.Show("׳©׳ ׳”׳§׳•׳‘׳¥ ׳׳›׳™׳ ׳×׳•׳•׳™׳ ׳‘׳׳×׳™ ׳—׳•׳§׳™׳™׳ ׳׳• ׳ ׳™׳¡׳™׳•׳ ׳׳ ׳™׳•׳•׳˜ ׳ ׳×׳™׳‘.", "׳©׳’׳™׳׳”", MessageBoxButton.OK, MessageBoxImage.Error, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
+                return;
+            }
 
-            // בדיקת אם הקובץ החדש קיים כבר
+            string combinedName = newFileName + fileExtension;
+            string newPath = Path.Combine(fileInfo.DirectoryName, combinedName);
+
+            if (!string.Equals(Path.GetDirectoryName(newPath), fileInfo.DirectoryName, StringComparison.OrdinalIgnoreCase))
+            {
+                MessageBox.Show("׳ ׳™׳¡׳™׳•׳ ׳׳¢׳§׳•׳£ ׳ ׳×׳™׳‘ (Path Traversal) ׳–׳•׳”׳” ׳•׳ ׳—׳¡׳.", "׳׳‘׳˜׳—׳”", MessageBoxButton.OK, MessageBoxImage.Error, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
+                return;
+            }
+
+            if (!pathPolicy.CanRename(fileInfo.FullName, newPath, out var renameReason))
+            {
+                MessageBox.Show(renameReason, "׳©׳’׳™׳׳× ׳׳“׳™׳ ׳™׳•׳×", MessageBoxButton.OK, MessageBoxImage.Error, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
+                return;
+            }
+
             if (File.Exists(newPath))
             {
-                MessageBox.Show("קובץ עם שם זה כבר קיים.", "שגיאה", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show("׳§׳•׳‘׳¥ ׳¢׳ ׳©׳ ׳–׳” ׳›׳‘׳¨ ׳§׳™׳™׳.", "׳©׳’׳™׳׳”", MessageBoxButton.OK, MessageBoxImage.Error, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
                 return;
             }
 
-            File.Move(path, newPath);
+            File.Move(fileInfo.FullName, newPath);
 
-            MessageBox.Show("השם שונה בהצלחה", "שינוי שם", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show("׳”׳©׳ ׳©׳•׳ ׳” ׳‘׳”׳¦׳׳—׳”.", "׳©׳™׳ ׳•׳™ ׳©׳", MessageBoxButton.OK, MessageBoxImage.Information, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
             OpenTabPath();
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"שינוי השם נכשל: {ex.Message}", "שגיאה", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show($"׳©׳™׳ ׳•׳™ ׳”׳©׳ ׳ ׳›׳©׳: {ex.Message}", "׳©׳’׳™׳׳”", MessageBoxButton.OK, MessageBoxImage.Error, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
         }
     }
-
 
     #endregion
 
     #region ChangeDesign
 
     public ICommand ChangeDesign { get; }
-
 
     #endregion
 
@@ -275,7 +408,25 @@ internal class TabContentViewModel : ViewModel, IDisposable
 
     private void OnBackCmdExecuted(object p)
     {
-        TabPath = Path.GetDirectoryName(TabPath);
+        if (TabPath == null) return;
+
+        var parent = Path.GetDirectoryName(TabPath);
+        if (string.IsNullOrEmpty(parent))
+        {
+            TabPath = null;
+        }
+        else
+        {
+            if (pathPolicy.CanNavigate(parent, out _))
+            {
+                TabPath = parent;
+            }
+            else
+            {
+                TabPath = null;
+            }
+        }
+
         OpenTabPath();
     }
 
@@ -287,7 +438,7 @@ internal class TabContentViewModel : ViewModel, IDisposable
 
     private void OnBackHomeExecuted(object p)
     {
-        TabPath = "";
+        TabPath = null;
         OpenTabPath();
     }
 
@@ -300,14 +451,13 @@ internal class TabContentViewModel : ViewModel, IDisposable
     private void OnResetOtzariaCmdExecuted(object p)
     {
         var filesToDelete = new List<string>
-            {
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), @"com.example\otzaria\tabs.isar"),
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), @"com.example\otzaria\history.isar"),
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), @"com.example\otzaria\bookmarks.isar")
-            };
+        {
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), @"com.example\otzaria\tabs.isar"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), @"com.example\otzaria\history.isar"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), @"com.example\otzaria\bookmarks.isar")
+        };
 
-        string result = DeleteFiles(filesToDelete);
-        Console.WriteLine(result);
+        DeleteFiles(filesToDelete);
     }
 
     #endregion
@@ -318,8 +468,8 @@ internal class TabContentViewModel : ViewModel, IDisposable
 
     private void OnOpenAboutCmdExecuted(object p)
     {
-        about aboutForm = new about();
-        aboutForm.ShowDialog();
+        var aboutWindow = new about();
+        aboutWindow.ShowDialog();
     }
 
     #endregion
@@ -328,8 +478,10 @@ internal class TabContentViewModel : ViewModel, IDisposable
 
     #region Constructor
 
-    public TabContentViewModel()
+    public TabContentViewModel(IPathPolicy pathPolicy = null)
     {
+        this.pathPolicy = pathPolicy ?? App.Container?.GetService<IPathPolicy>() ?? new PathPolicy();
+
         worker = new BackgroundWorker
         {
             WorkerSupportsCancellation = true,
@@ -340,11 +492,9 @@ internal class TabContentViewModel : ViewModel, IDisposable
         worker.ProgressChanged += worker_ProgressChanged;
         worker.RunWorkerCompleted += worker_RunWorkerCompleted;
 
-        //RunCmd = new ActionCommand(OnRunCmdExecuted);
         OpenCmd = new ActionCommand(OnOpenCmdExecuted);
-        DeleteCmd = new ActionCommand(onDeletePath);
+        DeleteCmd = new ActionCommand(OnDeletePath);
         RenameCmd = new ActionCommand(OnRenameCmdExecuted);
-        //ChangeDesign = new ActionCommand(OnRunCmdExecuted);
         BackCmd = new ActionCommand(OnBackCmdExecuted, CanBackCmdExecute);
         BackHome = new ActionCommand(OnBackHomeExecuted);
         ResetOtzariaCmd = new ActionCommand(OnResetOtzariaCmdExecuted);
@@ -368,19 +518,51 @@ internal class TabContentViewModel : ViewModel, IDisposable
     private void OpenTabPath()
     {
         if (worker.IsBusy)
+        {
             worker.CancelAsync();
+        }
         else
         {
-            TabTitle = TabPath != null && Path.GetPathRoot(TabPath) == TabPath
-            ? GetDriveLabel(new DriveInfo(TabPath))
-            : Path.GetFileName(TabPath);
+            if (TabPath != null && !pathPolicy.CanNavigate(TabPath, out var reason))
+            {
+                MessageBox.Show(reason, "׳’׳™׳©׳” ׳ ׳“׳—׳×׳”", MessageBoxButton.OK, MessageBoxImage.Warning, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
+                TabPath = null;
+            }
+
+            if (TabPath != null && Path.GetPathRoot(TabPath) == TabPath)
+            {
+                try
+                {
+                    var drive = new DriveInfo(TabPath);
+                    TabTitle = GetDriveLabel(drive);
+                }
+                catch
+                {
+                    TabTitle = TabPath;
+                }
+            }
+            else
+            {
+                TabTitle = string.IsNullOrEmpty(TabPath) ? "׳‘׳™׳×" : Path.GetFileName(TabPath);
+            }
+
             FileSystemObjects.Clear();
             worker.RunWorkerAsync();
         }
     }
 
-    private string GetDriveLabel(DriveInfo drive) => $"{(drive.VolumeLabel != "" ? drive.VolumeLabel : "דיסק מקומי")} ({drive.Name})";
-
+    private string GetDriveLabel(DriveInfo drive)
+    {
+        try
+        {
+            string label = (drive.IsReady && !string.IsNullOrEmpty(drive.VolumeLabel)) ? drive.VolumeLabel : "׳“׳™׳¡׳§ ׳׳§׳•׳׳™";
+            return $"{label} ({drive.Name})";
+        }
+        catch
+        {
+            return drive.Name;
+        }
+    }
 
     private string GetDriveFormat(DriveInfo drive)
     {
@@ -388,11 +570,11 @@ internal class TabContentViewModel : ViewModel, IDisposable
 
         if (driveType == "Fixed")
         {
-            return "דיסק מקומי";
+            return "׳“׳™׳¡׳§ ׳׳§׳•׳׳™";
         }
         else if (driveType == "Removable")
         {
-            return "דיסק נשלף";
+            return "׳“׳™׳¡׳§ ׳ ׳©׳׳£ (USB)";
         }
         else
         {
@@ -400,15 +582,11 @@ internal class TabContentViewModel : ViewModel, IDisposable
         }
     }
 
-
     private void worker_DoWork(object sender, DoWorkEventArgs e)
     {
         if (TabPath == null)
         {
-            // חישוב מראש של מספר הכוננים המוצגים בלבד
-            var visibleDrives = DriveInfo.GetDrives()
-                .Where(drive => !IsExcludedDrive(drive))
-                .ToList();
+            var visibleDrives = pathPolicy.GetAllowedDrives().ToList();
             var driveCount = visibleDrives.Count;
             int processedDrives = 0;
 
@@ -420,141 +598,149 @@ internal class TabContentViewModel : ViewModel, IDisposable
                     return;
                 }
 
-                Application.Current.Dispatcher.Invoke(() =>
+                try
                 {
-                    FileSystemObjects.Add(new FileSystemObject()
+                    var rootPath = drive.RootDirectory.FullName;
+                    var driveLabel = GetDriveLabel(drive);
+                    var driveType = GetDriveFormat(drive);
+                    long totalSize = 0;
+                    long freeSpace = 0;
+                    string format = "";
+
+                    if (drive.IsReady)
                     {
-                        Image = FolderManager.GetImageSource(drive.RootDirectory.FullName, ItemState.Undefined),
-                        Name = GetDriveLabel(drive),
-                        Path = drive.Name,
-                        TotalSpace = drive.TotalSize,
-                        FreeSpace = drive.TotalFreeSpace,
-                        Size = drive.TotalSize - drive.TotalFreeSpace,
-                        Format = drive.DriveFormat.ToString(),
-                        Type = GetDriveFormat(drive)
-                    });
-                }, DispatcherPriority.Background);
+                        totalSize = drive.TotalSize;
+                        freeSpace = drive.TotalFreeSpace;
+                        format = drive.DriveFormat.ToString();
+                    }
+
+                    Application.Current.Dispatcher.Invoke(() =>
+                    {
+                        FileSystemObjects.Add(new FileSystemObject()
+                        {
+                            Image = FolderManager.GetImageSource(rootPath, ItemState.Undefined),
+                            Name = driveLabel,
+                            Path = drive.Name,
+                            TotalSpace = totalSize,
+                            FreeSpace = freeSpace,
+                            Size = totalSize - freeSpace,
+                            Format = format,
+                            Type = driveType
+                        });
+                    }, DispatcherPriority.Background);
+                }
+                catch
+                {
+                }
 
                 processedDrives++;
-                worker.ReportProgress((int)((double)processedDrives / driveCount * 100));
+                if (driveCount > 0)
+                    worker.ReportProgress((int)((double)processedDrives / driveCount * 100));
             }
         }
         else
         {
             try
             {
-                var entryCount = new DirectoryInfo(TabPath).EnumerateFileSystemInfos().Count();
-
-                // בדיקה אם הנתיב אינו בכונן C או בכוננים שאינם מותרים
-                if (IsNotOnDriveC(TabPath))
+                if (!pathPolicy.CanNavigate(TabPath, out var navReason))
                 {
-                    int processedFiles = 0;
-
-                    foreach (var directory in Directory.EnumerateDirectories(TabPath))
+                    Application.Current.Dispatcher.Invoke(() =>
                     {
-                        if (worker.CancellationPending)
-                        {
-                            e.Cancel = true;
-                            return;
-                        }
-
-                        var directoryInfo = new DirectoryInfo(directory);
-
-                        if ((directoryInfo.Attributes & FileAttributes.Hidden) == FileAttributes.Hidden)
-                        {
-                            processedFiles++;
-                            worker.ReportProgress((int)((double)processedFiles / entryCount * 100));
-                            continue;
-                        }
-
-                        Application.Current.Dispatcher.Invoke(() =>
-                        {
-                            FileSystemObjects.Add(new FileSystemObject()
-                            {
-                                Image = FolderManager.GetImageSource(directory, ItemState.Undefined),
-                                Name = Path.GetFileName(directory),
-                                Path = directory,
-                                Size = directoryInfo.EnumerateFiles("*", SearchOption.AllDirectories).Sum(f => f.Length),
-                                TotalSpace = 012345667658675846,
-                                FreeSpace = 012345667658675846,
-                                Format = directoryInfo.LastWriteTime.ToString()
-                            });
-                        }, DispatcherPriority.Background);
-
-                        processedFiles++;
-                        worker.ReportProgress((int)((double)processedFiles / entryCount * 100));
-                    }
-
-                    foreach (var file in Directory.EnumerateFiles(TabPath))
-                    {
-                        if (worker.CancellationPending)
-                        {
-                            e.Cancel = true;
-                            return;
-                        }
-
-                        var fileInfo = new FileInfo(file);
-
-                        if ((fileInfo.Attributes & FileAttributes.Hidden) == FileAttributes.Hidden)
-                        {
-                            processedFiles++;
-                            worker.ReportProgress((int)((double)processedFiles / entryCount * 100));
-                            continue;
-                        }
-
-                        Application.Current.Dispatcher.Invoke(() =>
-                        {
-                            FileSystemObjects.Add(new FileSystemObject()
-                            {
-                                Image = FileManager.GetImageSource(file),
-                                Name = Path.GetFileName(file),
-                                Path = file,
-                                Size = fileInfo.Length,
-                                Format = fileInfo.LastWriteTime.ToString(),
-                                CreationTime = fileInfo.CreationTime.ToString(),
-                                TotalSpace = 012345667658675846,
-                                FreeSpace = 012345667658675846
-                            });
-                        }, DispatcherPriority.Background);
-
-                        processedFiles++;
-                        worker.ReportProgress((int)((double)processedFiles / entryCount * 100));
-                    }
+                        MessageBox.Show(navReason, "׳׳™׳ ׳’׳™׳©׳”", MessageBoxButton.OK, MessageBoxImage.Error, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
+                        TabPath = null;
+                        OpenTabPath();
+                    });
+                    return;
                 }
-                else
+
+                var dirInfo = new DirectoryInfo(TabPath);
+                var subDirs = dirInfo.EnumerateDirectories()
+                    .Where(d => pathPolicy.CanListDirectory(d.FullName, out _))
+                    .ToList();
+                var files = dirInfo.EnumerateFiles()
+                    .Where(f => pathPolicy.CanListFile(f.FullName, out _))
+                    .ToList();
+
+                var entryCount = subDirs.Count + files.Count;
+                int processedFiles = 0;
+
+                foreach (var directoryInfo in subDirs)
                 {
-                    MessageBox.Show($"Access denied\nהגישה נדחתה", "אין גישה", MessageBoxButton.OK, MessageBoxImage.Error, MessageBoxResult.No, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
+                    if (worker.CancellationPending)
+                    {
+                        e.Cancel = true;
+                        return;
+                    }
 
+                    var directory = directoryInfo.FullName;
+                    Application.Current.Dispatcher.Invoke(() =>
+                    {
+                        FileSystemObjects.Add(new FileSystemObject()
+                        {
+                            Image = FolderManager.GetImageSource(directory, ItemState.Undefined),
+                            Name = directoryInfo.Name,
+                            Path = directory,
+                            Size = 0,
+                            TotalSpace = NotApplicableSpaceSentinel,
+                            FreeSpace = NotApplicableSpaceSentinel,
+                            Format = directoryInfo.LastWriteTime.ToString()
+                        });
+                    }, DispatcherPriority.Background);
 
-                    TabPath = null;
-                    //OnBackHomeExecuted(null);
+                    processedFiles++;
+                    if (entryCount > 0)
+                        worker.ReportProgress((int)((double)processedFiles / entryCount * 100));
+                }
+
+                foreach (var fileInfo in files)
+                {
+                    if (worker.CancellationPending)
+                    {
+                        e.Cancel = true;
+                        return;
+                    }
+
+                    var file = fileInfo.FullName;
+                    Application.Current.Dispatcher.Invoke(() =>
+                    {
+                        FileSystemObjects.Add(new FileSystemObject()
+                        {
+                            Image = FileManager.GetImageSource(file),
+                            Name = fileInfo.Name,
+                            Path = file,
+                            Size = fileInfo.Length,
+                            Format = fileInfo.LastWriteTime.ToString(),
+                            CreationTime = fileInfo.CreationTime.ToString(),
+                            TotalSpace = NotApplicableSpaceSentinel,
+                            FreeSpace = NotApplicableSpaceSentinel
+                        });
+                    }, DispatcherPriority.Background);
+
+                    processedFiles++;
+                    if (entryCount > 0)
+                        worker.ReportProgress((int)((double)processedFiles / entryCount * 100));
                 }
             }
             catch (UnauthorizedAccessException ex)
             {
-                MessageBox.Show($"Access denied\nהגישה נדחתה\n{ex.Message}", "אין גישה", MessageBoxButton.OK, MessageBoxImage.Error, MessageBoxResult.No, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
+                Application.Current.Dispatcher.Invoke(() =>
+                {
+                    MessageBox.Show($"׳”׳’׳™׳©׳” ׳ ׳“׳—׳×׳”:\n{ex.Message}", "׳׳™׳ ׳’׳™׳©׳”", MessageBoxButton.OK, MessageBoxImage.Error, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
+                    TabPath = null;
+                    OpenTabPath();
+                });
+            }
+            catch (Exception ex)
+            {
+                Application.Current.Dispatcher.Invoke(() =>
+                {
+                    MessageBox.Show($"׳©׳’׳™׳׳” ׳‘׳˜׳¢׳™׳ ׳× ׳”׳ ׳×׳™׳‘:\n{ex.Message}", "׳©׳’׳™׳׳”", MessageBoxButton.OK, MessageBoxImage.Error, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
+                    TabPath = null;
+                    OpenTabPath();
+                });
             }
         }
     }
-
-    // פונקציה שמסננת כוננים לא רצויים
-    private bool IsExcludedDrive(DriveInfo drive)
-    {
-        return drive.Name == "C:\\" ||
-               drive.VolumeLabel == "Otzar Hahochma" ||
-               File.Exists(Path.Combine(drive.RootDirectory.FullName, "otzar.exe"));
-    }
-
-    public bool IsNotOnDriveC(string path)
-    {
-        if (string.IsNullOrEmpty(path))
-            throw new ArgumentException("Path cannot be null or empty", nameof(path));
-
-        var root = Path.GetPathRoot(path);
-        var drive = new DriveInfo(root);
-        return !IsExcludedDrive(drive);
-    }
-
 
     private void worker_ProgressChanged(object sender, ProgressChangedEventArgs e)
     {
@@ -565,7 +751,6 @@ internal class TabContentViewModel : ViewModel, IDisposable
     {
         if (e.Cancelled) OpenTabPath();
     }
-
 
     private static string DeleteFiles(List<string> filePaths)
     {
@@ -581,10 +766,6 @@ internal class TabContentViewModel : ViewModel, IDisposable
                     File.Delete(filePath);
                     successList.Add(filePath);
                 }
-                else
-                {
-                    //failureList.Add($"{filePath} (File not found)");
-                }
             }
             catch (Exception ex)
             {
@@ -594,14 +775,11 @@ internal class TabContentViewModel : ViewModel, IDisposable
 
         if (failureList.Any())
         {
-            return $"לא ניתן היה למחוק חלק מהקבצים:\n{string.Join("\n", failureList)}";
+            return $"׳׳ ׳ ׳™׳×׳ ׳”׳™׳” ׳׳׳—׳•׳§ ׳—׳׳§ ׳׳”׳§׳‘׳¦׳™׳:\n{string.Join("\n", failureList)}";
         }
-        else
-        {
-            return "success";
-        }
-    }
 
+        return "success";
+    }
 
     #endregion
 }

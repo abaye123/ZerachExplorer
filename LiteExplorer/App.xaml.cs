@@ -1,5 +1,6 @@
 ﻿using LiteExplorer.MVVM.ViewModels;
 using LiteExplorer.MVVM.Views.Windows;
+using LiteExplorer.Services;
 using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Windows;
@@ -12,12 +13,17 @@ public partial class App
 
     public App() => RegisterServices();
 
-    protected override void OnStartup(StartupEventArgs e) => Container.GetService<MainWindow>().Show();
+    protected override void OnStartup(StartupEventArgs e)
+    {
+        base.OnStartup(e);
+        Container.GetService<MainWindow>()?.Show();
+    }
 
     private static void RegisterServices()
     {
         var services = new ServiceCollection();
 
+        services.AddSingleton<IPathPolicy, PathPolicy>();
         services.AddSingleton<MainWindowViewModel>();
         services.AddSingleton<MainWindow>(provider => new()
         {
