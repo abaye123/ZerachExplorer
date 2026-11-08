@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
         <OutputType>WinExe</OutputType>
@@ -14,6 +14,12 @@
 
     <ItemGroup>
         <Resource Include="Assets\app.ico" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+            <_Parameter1>LiteExplorer.Tests</_Parameter1>
+        </AssemblyAttribute>
     </ItemGroup>
 
 </Project>
