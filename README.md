@@ -1,55 +1,38 @@
 # ZerachExplorer | זרח אקספלורר
 
-זרח אקספלורר הוא סייר קבצים מודרני ומוגן עבור עמדות מחשבים ציבוריות.
-
-## תכונות:
-
-* אין גישה לכונן C, ולתיקיות וקבצים מוסתרים.  
-* אין גישה לכוננים של תוכנת "אוצר החוכמה".  
-* פתיחת והעתקת קבצים מהסוגים המאושרים בלבד.  
-* סיומות הקבצים המאושרות הם: `doc`, `docx`, `xls`, `xlsx`, `pdf`, `txt`, `csv`, `one`, `onetoc2`  (וורד, אקסל, וואן נוט).  
-* מחיקה ושינוי שם לקבצים (ללא שינוי סיומת הקובץ).
-
-## קרדיט:
-
-התוכנה הזו קיימת בזכות הפרויקט הנהדר הזה:  
-https://github.com/tempous/LiteExplorer
-
-## רישיון:
-
-קוד המקור של התוכנה זמין בכתובת:  
-https://github.com/abaye123/ZerachExplorer  
-תחת רישיון BSD 3-Clause License.
-
-## בהמשך:
-
-בעתיד בעז"ה יתווסף ~~שינוי שם לקובץ~~ והסרת כונן באופן בטוח.
+זרח אקספלורר הוא סייר קבצים מודרני, מאובטח וקל משקל המיועד לעמדות מחשבים ציבוריות (בתי מדרש, ישיבות, ספריות וקיוסקים).
 
 ---
 
-# ZerachExplorer
+## 🔒 תכונות אבטחה מרכזיות:
 
-ZerachExplorer is a modern and secure file explorer designed for public computer stations.
+* **מודל רשימה לבנה (Drive Whitelist):** חשיפה כברירת מחדל של כוננים נשלפים (USB) בלבד; חסימת כוננים פנימיים ורשת.
+* **חסימת כונן המערכת (C:):** חסימה דינמית שאינה תלויה ברישיות (`c:\`, `C:\`, נתיב Windows דינמי).
+* **חסימת כונני "אוצר החוכמה":** זיהוי וחסימה לפי תווית כונן, תוכן פיזי (`otzar.exe`) ומזהי Volume Serial.
+* **שירות הרשאות מרכזי (`PathPolicy`):** אימות כל פעולת פתיחה, ניווט ישיר בשורת הכתובת, מחיקה ושינוי שם.
+* **הגנה מפני עקיפות (Bypass Protection):** חסימת קישורים סימבוליים וצמתים (Junctions / Reparse Points) המצביעים למיקומים חסומים.
+* **חסימת UNC & Path Traversal:** חסימת נתיבי רשת (`\\server\share`, `\\localhost\c$`) ונרמול מלא לפני כל בדיקה.
+* **שינוי שם מוגן:** חסימת ניווט יחסי (`..\..\`) ונעילת סיומת הקובץ המקורית.
+* **מחיקה בטוחה:** חסימת מחיקת כוננים, הצגת פירוט תכולה כולל קבצים מוסתרים, והעברה לסל המיחזור במקום מחיקה לצמיתות.
+* **פתיחת מסמכים מאושרים בלבד:** סיומות מורשות: `doc`, `docx`, `xls`, `xlsx`, `pdf`, `txt`, `csv`, `one`, `onetoc2`.
 
-## Features:
+---
 
-* No access to the C drive, hidden folders, or files.  
-* No access to the "Otzar HaHochma" software drives.  
-* Opening and copying files only of approved types.  
-* Approved file extensions: `doc`, `docx`, `xls`, `xlsx`, `pdf`, `txt`, `csv`, `one`, `onetoc2` (Word, Excel, OneNote).  
-* Deleting and renaming files (without changing the file extension).
+## ⚠️ גבולות גזרה והקשחת עמדה ציבורית (חובה לקרוא)
 
-## Credit:
+זרח אקספלורר מהווה **שכבת נוחות וממשק קיוסק מבוקר** ברמת היישום.  
+בעת פתיחת מסמך Word/Excel/PDF, מופעלת התוכנה החיצונית של מערכת ההפעלה, ודרכה קיימים תפריטי "שמור בשם" / "פתח קובץ" שנגישים לדיסק לפי הרשאות המשתמש ב-Windows.
 
-This software exists thanks to this fantastic project:  
-https://github.com/tempous/LiteExplorer
+לפיכך, בעמדה ציבורית **חובה** לשלב את התוכנה עם:
+1. **חשבון משתמש מוגבל (Standard User)** ללא הרשאות מנהל.
+2. **הגדרות GPO:** החלת `NoDrives` ו-`NoViewOnDrive` להסתרת וחסימת כוננים במערכת, וחסימת `cmd`/`powershell`.
+3. **הרשאות NTFS** לקריאה בלבד בכוננים מקומיים והגבלת מאקרו ביישומי Office.
 
-## License:
+למידע מפורט ראו את מסמך האבטחה המלא: [SECURITY.md](SECURITY.md).
 
-The source code is available at:  
-https://github.com/abaye123/ZerachExplorer  
-under the BSD 3-Clause License.
+---
 
-## Future Plans:
+## רישיון וקרדיטים:
 
-In the future, with God's help, features like ~~renaming files~~ and safe drive removal will be added.
+* מבוסס במקור על הפרויקט: [tempous/LiteExplorer](https://github.com/tempous/LiteExplorer)
+* קוד המקור זמין תחת רישיון BSD 3-Clause License.
