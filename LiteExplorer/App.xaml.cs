@@ -22,6 +22,14 @@ public partial class App
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+
+        var configService = Container.GetService<IConfigurationService>();
+        var pathPolicy = Container.GetService<IPathPolicy>();
+        if (configService != null && pathPolicy != null)
+        {
+            configService.ApplyToPolicy(pathPolicy);
+        }
+
         Container.GetService<MainWindow>()?.Show();
     }
 
@@ -64,6 +72,7 @@ public partial class App
     {
         var services = new ServiceCollection();
 
+        services.AddSingleton<IConfigurationService, ConfigurationService>();
         services.AddSingleton<IPathPolicy, PathPolicy>();
         services.AddSingleton<IDriveEjectService, DriveEjectService>();
         services.AddSingleton<MainWindowViewModel>();
