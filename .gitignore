@@ -9,3 +9,5 @@ IMPROVEMENTS.md
 [Oo]bj/
 *.user
 *.suo
+publish/
+publish-standalone/

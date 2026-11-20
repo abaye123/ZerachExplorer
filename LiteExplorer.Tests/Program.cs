@@ -1,4 +1,5 @@
 using LiteExplorer.Helpers;
+using LiteExplorer.MVVM.Models;
 using LiteExplorer.MVVM.ViewModels;
 using LiteExplorer.Services;
 using System;
@@ -85,6 +86,37 @@ public class Program
         Assert(!customPolicy.AllowedExtensions.Contains(".exe"), "Disallowed extensions do not contain .exe");
         Assert(!customPolicy.AllowedExtensions.Contains(".bat"), "Disallowed extensions do not contain .bat");
         Assert(!customPolicy.AllowedExtensions.Contains(".ps1"), "Disallowed extensions do not contain .ps1");
+
+        // Stage 2 - Section 4.1: File copy policy
+        Assert(!customPolicy.CanCopyFile(@"C:\file.docx", @"D:\", out _), "Block copying source from C:");
+        Assert(!customPolicy.CanCopyFile(@"D:\file.exe", @"D:\docs", out _), "Block copying disallowed executable file");
+        Assert(!customPolicy.CanCopyFile(@"D:\file.docx", @"C:\Windows", out _), "Block copying destination to C:");
+
+        // Stage 2 - Section 4.2: File move policy
+        Assert(!customPolicy.CanMoveFile(@"C:\file.docx", @"D:\", out _), "Block moving source from C:");
+        Assert(!customPolicy.CanMoveFile(@"D:\file.exe", @"D:\docs", out _), "Block moving disallowed extension");
+
+        // Stage 2 - Section 4.4: Directory creation policy
+        Assert(!customPolicy.CanCreateDirectory(@"D:\", "", out _), "Block creating directory with empty name");
+        Assert(!customPolicy.CanCreateDirectory(@"D:\", "invalid/name", out _), "Block creating directory with forward slash");
+        Assert(!customPolicy.CanCreateDirectory(@"D:\", "invalid\\name", out _), "Block creating directory with backslash");
+        Assert(!customPolicy.CanCreateDirectory(@"D:\", "CON", out _), "Block creating directory with reserved DOS name CON");
+        Assert(!customPolicy.CanCreateDirectory(@"D:\", "NUL", out _), "Block creating directory with reserved DOS name NUL");
+        Assert(!customPolicy.CanCreateDirectory(@"C:\", "NewFolder", out _), "Block creating directory on C:");
+        Assert(customPolicy.CanCreateDirectory(@"D:\", "ValidFolder", out _), "Allow creating valid directory name on allowed drive");
+
+        // Stage 2 - Section 4.5: Conflict resolution model
+        var conflictResult = new ConflictResolutionResult();
+        Assert(conflictResult.Action == ConflictResolutionAction.Skip, "Default conflict resolution action is Skip");
+        conflictResult.Action = ConflictResolutionAction.KeepBoth;
+        conflictResult.ApplyToAll = true;
+        Assert(conflictResult.Action == ConflictResolutionAction.KeepBoth && conflictResult.ApplyToAll, "Conflict resolution model updates correctly");
+
+        // Stage 2 - Section 4.6: Device ejection policy & service
+        Assert(!customPolicy.CanEjectDrive(@"C:\", out _), "Block ejecting system drive C:");
+        var ejectService = new DriveEjectService(customPolicy);
+        bool ejectCResult = ejectService.EjectDrive(@"C:\", out string ejectReason);
+        Assert(!ejectCResult && !string.IsNullOrEmpty(ejectReason), "DriveEjectService blocks C: with message");
 
         // Crash logging verification
         try
