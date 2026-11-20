@@ -2,6 +2,19 @@
 
 All notable changes to ZerachExplorer will be documented in this file.
 
+## [1.6.0] - Stage 4: UX, Navigation, Search, Column Sorting, Auto Refresh & Quick Preview
+
+### Features & UI (תכונות וממשק משתמש)
+- **Interactive Breadcrumbs (סרגל פירורי לחם אינטראקטיבי):** Added breadcrumb navigation with clickable directory segments to quickly jump to parent folders, along with smooth toggle between breadcrumb chips and direct text editing.
+- **Instant Search & Filter (חיפוש וסינון מהיר):** Implemented in-folder filtering by file name or extension with instant responsive filtering via CollectionViewSource and quick clear button.
+- **Multi-Column Sorting (מיון לפי עמודות):** Transformed ListView into a modern GridView supporting column header clicks for Name, Date Modified, Type, and Size with ascending/descending toggle and custom directory-first ordering (FileSystemObjectComparer).
+- **Real-Time Auto Refresh (רענון אוטומטי בזמן אמת):** Integrated debounced FileSystemWatcher to detect file system creations, modifications, and deletions in real-time, plus Windows WM_DEVICECHANGE detection via DeviceNotificationService to automatically refresh connected drives and safely handle unplugged USB devices.
+- **Sandboxed Quick Preview Pane (חלונית תצוגה מקדימה מהירה ובטוחה):** Added toggleable preview side-pane (toolbar button + Alt+P) supporting text files (.txt, .csv, .json, etc.), image files (.png, .jpg, .bmp, etc.) with frozen memory bitmaps, and rich document metadata cards without invoking external applications.
+- **Keyboard Shortcuts (קיצורי מקלדת תקניים):** Added and unified shortcuts for F5 (refresh), F2 (rename), Delete (delete), Alt+P (toggle preview), and Enter/Backspace for navigation.
+
+### Testing (בדיקות)
+- **Stage 4 Verification:** Added automated unit tests verifying breadcrumb path generation, collection filtering, multi-column sorting comparisons, device notification events, and preview model integrity (75 total passing tests).
+
 ## [1.5.1] - Tabs UX & Color Palette Improvements
 
 ### Features & UI (תכונות וממשק משתמש)
