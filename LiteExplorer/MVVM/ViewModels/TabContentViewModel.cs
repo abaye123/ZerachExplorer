@@ -13,6 +13,8 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Threading;
@@ -21,31 +23,27 @@ namespace LiteExplorer.MVVM.ViewModels;
 
 internal class TabContentViewModel : ViewModel, IDisposable
 {
+    private const long NotApplicableSpaceSentinel = 12345667658675846L;
+
     #region Private fields
 
-    private readonly BackgroundWorker worker;
     private readonly IPathPolicy pathPolicy;
+    private CancellationTokenSource currentScanCts;
+    private long currentScanId;
+    private readonly object scanLock = new();
 
     #endregion
 
     #region Properties
 
-    #region TabTitle
-
     private string tabTitle;
-
     public string TabTitle
     {
         get => tabTitle;
         set => SetValue(ref tabTitle, value);
     }
 
-    #endregion
-
-    #region TabPath
-
     private string tabPath;
-
     public string TabPath
     {
         get => tabPath;
@@ -57,43 +55,33 @@ internal class TabContentViewModel : ViewModel, IDisposable
         }
     }
 
-    #endregion
-
-    #region TabCommand
-
     private string tabCommand;
-
     public string TabCommand
     {
         get => tabCommand;
         set => SetValue(ref tabCommand, value);
     }
 
-    #endregion
-
-    #region CurrentFileSystemObject
-
     private FileSystemObject currentFileSystemObject;
-
     public FileSystemObject CurrentFileSystemObject
     {
         get => currentFileSystemObject;
         set => SetValue(ref currentFileSystemObject, value);
     }
 
-    #endregion
-
-    #region ProgressPercent
-
     private double progressPercent;
-
     public double ProgressPercent
     {
         get => progressPercent;
         set => SetValue(ref progressPercent, value);
     }
 
-    #endregion
+    private bool isLoading;
+    public bool IsLoading
+    {
+        get => isLoading;
+        set => SetValue(ref isLoading, value);
+    }
 
     public ObservableCollection<FileSystemObject> FileSystemObjects { get; set; } = new();
 
@@ -101,21 +89,55 @@ internal class TabContentViewModel : ViewModel, IDisposable
 
     #region Commands
 
-    #region Run
-
     public ICommand RunCmd { get; }
+    public ICommand OpenCmd { get; }
+    public ICommand DeleteCmd { get; }
+    public ICommand RenameCmd { get; }
+    public ICommand CalculateFolderSizeCmd { get; }
+    public ICommand BackCmd { get; }
+    public ICommand BackHome { get; }
+    public ICommand ResetOtzariaCmd { get; }
+    public ICommand OpenAboutCmd { get; }
 
     #endregion
 
-    #region Open
+    #region Constructor & Disposal
 
-    public ICommand OpenCmd { get; }
+    public TabContentViewModel(IPathPolicy pathPolicy = null)
+    {
+        this.pathPolicy = pathPolicy ?? App.Container?.GetService<IPathPolicy>() ?? new PathPolicy();
+
+        OpenCmd = new ActionCommand(OnOpenCmdExecuted);
+        DeleteCmd = new ActionCommand(OnDeletePath);
+        RenameCmd = new ActionCommand(OnRenameCmdExecuted);
+        BackCmd = new ActionCommand(OnBackCmdExecuted, CanBackCmdExecute);
+        BackHome = new ActionCommand(OnBackHomeExecuted);
+        CalculateFolderSizeCmd = new ActionCommand(OnCalculateFolderSizeExecuted);
+        ResetOtzariaCmd = new ActionCommand(OnResetOtzariaCmdExecuted);
+        OpenAboutCmd = new ActionCommand(OnOpenAboutCmdExecuted);
+
+        OpenCmd.Execute(TabPath);
+    }
+
+    public void Dispose()
+    {
+        lock (scanLock)
+        {
+            currentScanCts?.Cancel();
+            currentScanCts?.Dispose();
+            currentScanCts = null;
+        }
+    }
+
+    #endregion
+
+    #region Command Handlers
 
     private void OnOpenCmdExecuted(object p)
     {
         string rawPath = p?.ToString()?.Trim();
 
-        // If no path is provided, navigate to Home (Drives list)
+        // Navigate to Drives list if no path is specified.
         if (string.IsNullOrEmpty(rawPath))
         {
             TabPath = null;
@@ -123,7 +145,6 @@ internal class TabContentViewModel : ViewModel, IDisposable
             return;
         }
 
-        // 3.2 Verify all navigation and open operations against PathPolicy
         if (Directory.Exists(rawPath))
         {
             if (!pathPolicy.CanNavigate(rawPath, out var reason))
@@ -150,10 +171,12 @@ internal class TabContentViewModel : ViewModel, IDisposable
             }
             catch (Win32Exception ex)
             {
+                CrashLogger.LogException(ex, $"ShellExecute failed for file: {rawPath}");
                 MessageBox.Show(ex.Message, $"Error: {ex.NativeErrorCode}", MessageBoxButton.OK, MessageBoxImage.Error);
             }
             catch (Exception ex)
             {
+                CrashLogger.LogException(ex, $"Failed to open file: {rawPath}");
                 MessageBox.Show(ex.Message, "שגיאה בפתיחת הקובץ", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
@@ -163,20 +186,13 @@ internal class TabContentViewModel : ViewModel, IDisposable
         }
     }
 
-    #endregion
-
-    #region Delete
-
-    public ICommand DeleteCmd { get; }
-
-    private void onDeletePath(object p)
+    private void OnDeletePath(object p)
     {
         string rawPath = p?.ToString()?.Trim();
 
         if (string.IsNullOrWhiteSpace(rawPath))
             return;
 
-        // 3.6 Robust validation: Block drive deletion and verify path policy
         if (!pathPolicy.CanDelete(rawPath, out var deleteReason))
         {
             MessageBox.Show(deleteReason, "שגיאה במחיקה", MessageBoxButton.OK, MessageBoxImage.Warning, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
@@ -203,7 +219,7 @@ internal class TabContentViewModel : ViewModel, IDisposable
             return;
         }
 
-        // Count contents and check for hidden/system files before recursive delete
+        // Count contents and check for hidden/system items before deletion.
         int fileCount = 0;
         int dirCount = 0;
         int hiddenCount = 0;
@@ -228,7 +244,6 @@ internal class TabContentViewModel : ViewModel, IDisposable
             }
             catch
             {
-                // Inaccessible subfolder or count error - proceed cautiously
             }
         }
 
@@ -258,7 +273,6 @@ internal class TabContentViewModel : ViewModel, IDisposable
         if (result != MessageBoxResult.Yes)
             return;
 
-        // 3.6 Send to Recycle Bin instead of permanent recursive wipeout
         try
         {
             if (isDirectory)
@@ -281,7 +295,9 @@ internal class TabContentViewModel : ViewModel, IDisposable
         }
         catch (Exception ex)
         {
-            // If drive does not support Recycle Bin (e.g. FAT32 USB), ask explicit confirmation
+            CrashLogger.LogException(ex, $"Recycle bin delete failed for: {fullPath}");
+
+            // Prompt user if Recycle Bin is unsupported on the target volume.
             var fallbackResult = MessageBox.Show(
                 $"לא ניתן היה להעביר את הפריט לסל המיחזור ({ex.Message}).\nהאם ברצונך למחוק לצמיתות את הפריט?",
                 "אזהרת מחיקה לצמיתות",
@@ -304,17 +320,12 @@ internal class TabContentViewModel : ViewModel, IDisposable
                 }
                 catch (Exception ex2)
                 {
+                    CrashLogger.LogException(ex2, $"Permanent delete failed for: {fullPath}");
                     MessageBox.Show($"המחיקה נכשלה: {ex2.Message}", "שגיאה", MessageBoxButton.OK, MessageBoxImage.Error, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
                 }
             }
         }
     }
-
-    #endregion
-
-    #region Rename
-
-    public ICommand RenameCmd { get; }
 
     private void OnRenameCmdExecuted(object p)
     {
@@ -326,7 +337,6 @@ internal class TabContentViewModel : ViewModel, IDisposable
             return;
         }
 
-        // 3.5 Verify that user is allowed to access/rename this file
         if (!pathPolicy.CanOpenFile(rawPath, out var checkReason))
         {
             MessageBox.Show($"לא ניתן לשנות שם לקובץ זה:\n{checkReason}", "גישה נדחתה", MessageBoxButton.OK, MessageBoxImage.Warning, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
@@ -339,7 +349,6 @@ internal class TabContentViewModel : ViewModel, IDisposable
             string currentFileName = Path.GetFileNameWithoutExtension(fileInfo.FullName);
             string fileExtension = fileInfo.Extension;
 
-            // Prompt user for new file name
             string newFileName = Microsoft.VisualBasic.Interaction.InputBox(
                 "הכנס את השם החדש לקובץ:",
                 "שינוי שם הקובץ",
@@ -356,7 +365,7 @@ internal class TabContentViewModel : ViewModel, IDisposable
                 return;
             }
 
-            // 3.5 Prevent Path Traversal in Rename
+            // Validate new filename to prevent path traversal.
             char[] invalidChars = Path.GetInvalidFileNameChars();
             if (newFileName.IndexOfAny(invalidChars) >= 0 ||
                 newFileName.Contains('/') ||
@@ -370,14 +379,12 @@ internal class TabContentViewModel : ViewModel, IDisposable
             string combinedName = newFileName + fileExtension;
             string newPath = Path.Combine(fileInfo.DirectoryName, combinedName);
 
-            // Verify directory remains identical
             if (!string.Equals(Path.GetDirectoryName(newPath), fileInfo.DirectoryName, StringComparison.OrdinalIgnoreCase))
             {
                 MessageBox.Show("ניסיון לעקוף נתיב (Path Traversal) זוהה ונחסם.", "אבטחה", MessageBoxButton.OK, MessageBoxImage.Error, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
                 return;
             }
 
-            // Validate against policy
             if (!pathPolicy.CanRename(fileInfo.FullName, newPath, out var renameReason))
             {
                 MessageBox.Show(renameReason, "שגיאת מדיניות", MessageBoxButton.OK, MessageBoxImage.Error, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
@@ -397,21 +404,93 @@ internal class TabContentViewModel : ViewModel, IDisposable
         }
         catch (Exception ex)
         {
+            CrashLogger.LogException(ex, $"Rename failed for {rawPath}");
             MessageBox.Show($"שינוי השם נכשל: {ex.Message}", "שגיאה", MessageBoxButton.OK, MessageBoxImage.Error, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
         }
     }
 
-    #endregion
+    private async void OnCalculateFolderSizeExecuted(object p)
+    {
+        var targetObj = (p as FileSystemObject) ?? CurrentFileSystemObject;
+        if (targetObj == null || !targetObj.IsDirectory || string.IsNullOrWhiteSpace(targetObj.Path))
+            return;
 
-    #region ChangeDesign
+        if (targetObj.IsCalculatingSize)
+            return;
 
-    public ICommand ChangeDesign { get; }
+        targetObj.IsCalculatingSize = true;
 
-    #endregion
+        try
+        {
+            long totalBytes = await CalculateDirectorySizeAsync(targetObj.Path);
+            targetObj.Size = totalBytes;
+        }
+        catch (Exception ex)
+        {
+            CrashLogger.LogMessage($"Failed to calculate folder size for {targetObj.Path}: {ex.Message}", "WARN");
+        }
+        finally
+        {
+            targetObj.IsCalculatingSize = false;
+        }
+    }
 
-    #region Back
+    public static async Task<long> CalculateDirectorySizeAsync(string directoryPath, CancellationToken token = default)
+    {
+        return await Task.Run(() =>
+        {
+            long size = 0;
+            try
+            {
+                var dir = new DirectoryInfo(directoryPath);
+                if (!dir.Exists) return 0;
 
-    public ICommand BackCmd { get; }
+                var stack = new Stack<DirectoryInfo>();
+                stack.Push(dir);
+
+                while (stack.Count > 0)
+                {
+                    token.ThrowIfCancellationRequested();
+                    var currentDir = stack.Pop();
+
+                    try
+                    {
+                        foreach (var file in currentDir.EnumerateFiles())
+                        {
+                            token.ThrowIfCancellationRequested();
+                            size += file.Length;
+                        }
+                    }
+                    catch (UnauthorizedAccessException) { }
+                    catch (DirectoryNotFoundException) { }
+                    catch (PathTooLongException) { }
+                    catch (IOException) { }
+
+                    try
+                    {
+                        foreach (var subDir in currentDir.EnumerateDirectories())
+                        {
+                            token.ThrowIfCancellationRequested();
+                            stack.Push(subDir);
+                        }
+                    }
+                    catch (UnauthorizedAccessException) { }
+                    catch (DirectoryNotFoundException) { }
+                    catch (PathTooLongException) { }
+                    catch (IOException) { }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch
+            {
+            }
+
+            return size;
+        }, token);
+    }
 
     private bool CanBackCmdExecute(object p) => TabPath != null;
 
@@ -426,36 +505,17 @@ internal class TabContentViewModel : ViewModel, IDisposable
         }
         else
         {
-            if (pathPolicy.CanNavigate(parent, out _))
-            {
-                TabPath = parent;
-            }
-            else
-            {
-                TabPath = null;
-            }
+            TabPath = pathPolicy.CanNavigate(parent, out _) ? parent : null;
         }
 
         OpenTabPath();
     }
-
-    #endregion
-
-    #region BackHome
-
-    public ICommand BackHome { get; }
 
     private void OnBackHomeExecuted(object p)
     {
         TabPath = null;
         OpenTabPath();
     }
-
-    #endregion
-
-    #region ResetOtzaria
-
-    public ICommand ResetOtzariaCmd { get; }
 
     private void OnResetOtzariaCmdExecuted(object p)
     {
@@ -466,98 +526,319 @@ internal class TabContentViewModel : ViewModel, IDisposable
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), @"com.example\otzaria\bookmarks.isar")
         };
 
-        string result = DeleteFiles(filesToDelete);
-        Console.WriteLine(result);
+        DeleteFiles(filesToDelete);
     }
-
-    #endregion
-
-    #region OpenAbout
-
-    public ICommand OpenAboutCmd { get; }
 
     private void OnOpenAboutCmdExecuted(object p)
     {
-        about aboutForm = new about();
-        aboutForm.ShowDialog();
+        var aboutWindow = new about();
+        aboutWindow.ShowDialog();
     }
 
     #endregion
 
-    #endregion
-
-    #region Constructor
-
-    public TabContentViewModel(IPathPolicy pathPolicy = null)
-    {
-        this.pathPolicy = pathPolicy ?? App.Container?.GetService<IPathPolicy>() ?? new PathPolicy();
-
-        worker = new BackgroundWorker
-        {
-            WorkerSupportsCancellation = true,
-            WorkerReportsProgress = true
-        };
-
-        worker.DoWork += worker_DoWork;
-        worker.ProgressChanged += worker_ProgressChanged;
-        worker.RunWorkerCompleted += worker_RunWorkerCompleted;
-
-        OpenCmd = new ActionCommand(OnOpenCmdExecuted);
-        DeleteCmd = new ActionCommand(onDeletePath);
-        RenameCmd = new ActionCommand(OnRenameCmdExecuted);
-        BackCmd = new ActionCommand(OnBackCmdExecuted, CanBackCmdExecute);
-        BackHome = new ActionCommand(OnBackHomeExecuted);
-        ResetOtzariaCmd = new ActionCommand(OnResetOtzariaCmdExecuted);
-        OpenAboutCmd = new ActionCommand(OnOpenAboutCmdExecuted);
-
-        OpenCmd.Execute(TabPath);
-    }
-
-    public void Dispose()
-    {
-        worker.DoWork -= worker_DoWork;
-        worker.ProgressChanged -= worker_ProgressChanged;
-        worker.RunWorkerCompleted -= worker_RunWorkerCompleted;
-        worker.Dispose();
-    }
-
-    #endregion
-
-    #region Private methods
+    #region Private Directory Loading
 
     private void OpenTabPath()
     {
-        if (worker.IsBusy)
+        lock (scanLock)
         {
-            worker.CancelAsync();
+            currentScanCts?.Cancel();
+            currentScanCts?.Dispose();
+            currentScanCts = new CancellationTokenSource();
+        }
+
+        long scanId = Interlocked.Increment(ref currentScanId);
+        var token = currentScanCts.Token;
+
+        string targetPath = TabPath;
+
+        if (targetPath != null && !pathPolicy.CanNavigate(targetPath, out var reason))
+        {
+            MessageBox.Show(reason, "גישה נדחתה", MessageBoxButton.OK, MessageBoxImage.Warning, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
+            TabPath = null;
+            targetPath = null;
+        }
+
+        if (targetPath != null && Path.GetPathRoot(targetPath) == targetPath)
+        {
+            try
+            {
+                var drive = new DriveInfo(targetPath);
+                TabTitle = GetDriveLabel(drive);
+            }
+            catch
+            {
+                TabTitle = targetPath;
+            }
         }
         else
         {
-            if (TabPath != null && !pathPolicy.CanNavigate(TabPath, out var reason))
+            TabTitle = string.IsNullOrEmpty(targetPath) ? "בית" : Path.GetFileName(targetPath);
+        }
+
+        FileSystemObjects.Clear();
+        ProgressPercent = 0;
+        IsLoading = true;
+
+        _ = LoadDirectoryContentsAsync(targetPath, scanId, token);
+    }
+
+    private async Task LoadDirectoryContentsAsync(string targetPath, long scanId, CancellationToken token)
+    {
+        try
+        {
+            await Task.Run(async () =>
             {
-                MessageBox.Show(reason, "גישה נדחתה", MessageBoxButton.OK, MessageBoxImage.Warning, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
+                if (targetPath == null)
+                {
+                    var visibleDrives = pathPolicy.GetAllowedDrives().ToList();
+                    var driveCount = visibleDrives.Count;
+                    int processedDrives = 0;
+                    var driveBatch = new List<FileSystemObject>();
+
+                    foreach (var drive in visibleDrives)
+                    {
+                        token.ThrowIfCancellationRequested();
+
+                        try
+                        {
+                            var rootPath = drive.RootDirectory.FullName;
+                            var driveLabel = GetDriveLabel(drive);
+                            var driveType = GetDriveFormat(drive);
+                            long totalSize = 0;
+                            long freeSpace = 0;
+                            string format = "";
+
+                            if (drive.IsReady)
+                            {
+                                totalSize = drive.TotalSize;
+                                freeSpace = drive.TotalFreeSpace;
+                                format = drive.DriveFormat.ToString();
+                            }
+
+                            driveBatch.Add(new FileSystemObject
+                            {
+                                Image = FolderManager.GetImageSource(rootPath, ItemState.Undefined),
+                                Name = driveLabel,
+                                Path = drive.Name,
+                                TotalSpace = totalSize,
+                                FreeSpace = freeSpace,
+                                Size = totalSize - freeSpace,
+                                Format = format,
+                                Type = driveType,
+                                IsDirectory = true
+                            });
+                        }
+                        catch
+                        {
+                        }
+
+                        processedDrives++;
+                        if (driveCount > 0)
+                        {
+                            int progress = (int)((double)processedDrives / driveCount * 100);
+                            await DispatchOnUiThreadAsync(() => ProgressPercent = progress, token);
+                        }
+                    }
+
+                    await DispatchOnUiThreadAsync(() =>
+                    {
+                        if (scanId != Interlocked.Read(ref currentScanId) || token.IsCancellationRequested)
+                            return;
+
+                        foreach (var item in driveBatch)
+                            FileSystemObjects.Add(item);
+                    }, token);
+                }
+                else
+                {
+                    if (!pathPolicy.CanNavigate(targetPath, out var navReason))
+                    {
+                        await DispatchOnUiThreadAsync(() =>
+                        {
+                            if (scanId != Interlocked.Read(ref currentScanId)) return;
+                            MessageBox.Show(navReason, "אין גישה", MessageBoxButton.OK, MessageBoxImage.Error, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
+                            TabPath = null;
+                            OpenTabPath();
+                        }, token);
+                        return;
+                    }
+
+                    var dirInfo = new DirectoryInfo(targetPath);
+                    if (!dirInfo.Exists)
+                    {
+                        await DispatchOnUiThreadAsync(() =>
+                        {
+                            if (scanId != Interlocked.Read(ref currentScanId)) return;
+                            MessageBox.Show("התיקייה המבוקשת אינה קיימת או שהוסרה.", "שגיאה", MessageBoxButton.OK, MessageBoxImage.Error, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
+                            TabPath = null;
+                            OpenTabPath();
+                        }, token);
+                        return;
+                    }
+
+                    var subDirs = dirInfo.EnumerateDirectories()
+                        .Where(d => pathPolicy.CanListDirectory(d.FullName, out _))
+                        .ToList();
+                    var files = dirInfo.EnumerateFiles()
+                        .Where(f => pathPolicy.CanListFile(f.FullName, out _))
+                        .ToList();
+
+                    int totalCount = subDirs.Count + files.Count;
+                    int processedCount = 0;
+                    const int BatchSize = 64;
+                    var batch = new List<FileSystemObject>(BatchSize);
+
+                    foreach (var directoryInfo in subDirs)
+                    {
+                        token.ThrowIfCancellationRequested();
+
+                        var directory = directoryInfo.FullName;
+                        batch.Add(new FileSystemObject
+                        {
+                            Image = FolderManager.GetImageSource(directory, ItemState.Undefined),
+                            Name = directoryInfo.Name,
+                            Path = directory,
+                            Size = 0,
+                            TotalSpace = NotApplicableSpaceSentinel,
+                            FreeSpace = NotApplicableSpaceSentinel,
+                            Format = directoryInfo.LastWriteTime.ToString(),
+                            LastWriteTime = directoryInfo.LastWriteTime.ToString(),
+                            IsDirectory = true
+                        });
+
+                        processedCount++;
+
+                        if (batch.Count >= BatchSize)
+                        {
+                            var batchToSend = batch.ToList();
+                            batch.Clear();
+                            int currentProgress = totalCount > 0 ? (int)((double)processedCount / totalCount * 100) : 0;
+
+                            await DispatchOnUiThreadAsync(() =>
+                            {
+                                if (scanId != Interlocked.Read(ref currentScanId) || token.IsCancellationRequested)
+                                    return;
+
+                                foreach (var item in batchToSend)
+                                    FileSystemObjects.Add(item);
+
+                                ProgressPercent = currentProgress;
+                            }, token);
+                        }
+                    }
+
+                    foreach (var fileInfo in files)
+                    {
+                        token.ThrowIfCancellationRequested();
+
+                        var file = fileInfo.FullName;
+                        batch.Add(new FileSystemObject
+                        {
+                            Image = FileManager.GetImageSource(file),
+                            Name = fileInfo.Name,
+                            Path = file,
+                            Size = fileInfo.Length,
+                            Format = fileInfo.LastWriteTime.ToString(),
+                            CreationTime = fileInfo.CreationTime.ToString(),
+                            LastWriteTime = fileInfo.LastWriteTime.ToString(),
+                            TotalSpace = NotApplicableSpaceSentinel,
+                            FreeSpace = NotApplicableSpaceSentinel,
+                            IsDirectory = false
+                        });
+
+                        processedCount++;
+
+                        if (batch.Count >= BatchSize)
+                        {
+                            var batchToSend = batch.ToList();
+                            batch.Clear();
+                            int currentProgress = totalCount > 0 ? (int)((double)processedCount / totalCount * 100) : 0;
+
+                            await DispatchOnUiThreadAsync(() =>
+                            {
+                                if (scanId != Interlocked.Read(ref currentScanId) || token.IsCancellationRequested)
+                                    return;
+
+                                foreach (var item in batchToSend)
+                                    FileSystemObjects.Add(item);
+
+                                ProgressPercent = currentProgress;
+                            }, token);
+                        }
+                    }
+
+                    if (batch.Count > 0)
+                    {
+                        var remainingBatch = batch.ToList();
+                        batch.Clear();
+
+                        await DispatchOnUiThreadAsync(() =>
+                        {
+                            if (scanId != Interlocked.Read(ref currentScanId) || token.IsCancellationRequested)
+                                return;
+
+                            foreach (var item in remainingBatch)
+                                FileSystemObjects.Add(item);
+                        }, token);
+                    }
+                }
+            }, token);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            CrashLogger.LogMessage($"Unauthorized access when navigating to {targetPath}: {ex.Message}", "WARN");
+            await DispatchOnUiThreadAsync(() =>
+            {
+                if (scanId != Interlocked.Read(ref currentScanId)) return;
+                MessageBox.Show($"הגישה נדחתה:\n{ex.Message}", "אין גישה", MessageBoxButton.OK, MessageBoxImage.Error, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
                 TabPath = null;
-            }
-
-            if (TabPath != null && Path.GetPathRoot(TabPath) == TabPath)
+                OpenTabPath();
+            });
+        }
+        catch (Exception ex)
+        {
+            CrashLogger.LogException(ex, $"Failed to load path: {targetPath}");
+            await DispatchOnUiThreadAsync(() =>
             {
-                try
-                {
-                    var drive = new DriveInfo(TabPath);
-                    TabTitle = GetDriveLabel(drive);
-                }
-                catch
-                {
-                    TabTitle = TabPath;
-                }
-            }
-            else
+                if (scanId != Interlocked.Read(ref currentScanId)) return;
+                MessageBox.Show($"שגיאה בטעינת הנתיב:\n{ex.Message}", "שגיאה", MessageBoxButton.OK, MessageBoxImage.Error, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
+                TabPath = null;
+                OpenTabPath();
+            });
+        }
+        finally
+        {
+            if (scanId == Interlocked.Read(ref currentScanId))
             {
-                TabTitle = string.IsNullOrEmpty(TabPath) ? "בית" : Path.GetFileName(TabPath);
+                await DispatchOnUiThreadAsync(() =>
+                {
+                    IsLoading = false;
+                    ProgressPercent = 100;
+                });
             }
+        }
+    }
 
-            FileSystemObjects.Clear();
-            worker.RunWorkerAsync();
+    private static async Task DispatchOnUiThreadAsync(Action action, CancellationToken token = default)
+    {
+        if (Application.Current?.Dispatcher == null || Application.Current.Dispatcher.CheckAccess())
+        {
+            action();
+            return;
+        }
+
+        try
+        {
+            await Application.Current.Dispatcher.InvokeAsync(action, DispatcherPriority.Background, token);
+        }
+        catch (OperationCanceledException)
+        {
         }
     }
 
@@ -592,182 +873,8 @@ internal class TabContentViewModel : ViewModel, IDisposable
         }
     }
 
-    private void worker_DoWork(object sender, DoWorkEventArgs e)
-    {
-        if (TabPath == null)
-        {
-            // 3.7 Whitelist drive enumeration
-            var visibleDrives = pathPolicy.GetAllowedDrives().ToList();
-            var driveCount = visibleDrives.Count;
-            int processedDrives = 0;
-
-            foreach (var drive in visibleDrives)
-            {
-                if (worker.CancellationPending)
-                {
-                    e.Cancel = true;
-                    return;
-                }
-
-                try
-                {
-                    var rootPath = drive.RootDirectory.FullName;
-                    var driveLabel = GetDriveLabel(drive);
-                    var driveType = GetDriveFormat(drive);
-                    long totalSize = 0;
-                    long freeSpace = 0;
-                    string format = "";
-
-                    if (drive.IsReady)
-                    {
-                        totalSize = drive.TotalSize;
-                        freeSpace = drive.TotalFreeSpace;
-                        format = drive.DriveFormat.ToString();
-                    }
-
-                    Application.Current.Dispatcher.Invoke(() =>
-                    {
-                        FileSystemObjects.Add(new FileSystemObject()
-                        {
-                            Image = FolderManager.GetImageSource(rootPath, ItemState.Undefined),
-                            Name = driveLabel,
-                            Path = drive.Name,
-                            TotalSpace = totalSize,
-                            FreeSpace = freeSpace,
-                            Size = totalSize - freeSpace,
-                            Format = format,
-                            Type = driveType
-                        });
-                    }, DispatcherPriority.Background);
-                }
-                catch
-                {
-                    // Skip drive if error occurs
-                }
-
-                processedDrives++;
-                if (driveCount > 0)
-                    worker.ReportProgress((int)((double)processedDrives / driveCount * 100));
-            }
-        }
-        else
-        {
-            try
-            {
-                // Verify navigation permission again inside worker thread
-                if (!pathPolicy.CanNavigate(TabPath, out var navReason))
-                {
-                    Application.Current.Dispatcher.Invoke(() =>
-                    {
-                        MessageBox.Show(navReason, "אין גישה", MessageBoxButton.OK, MessageBoxImage.Error, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
-                        TabPath = null;
-                        OpenTabPath();
-                    });
-                    return;
-                }
-
-                var dirInfo = new DirectoryInfo(TabPath);
-                var subDirs = dirInfo.EnumerateDirectories()
-                    .Where(d => pathPolicy.CanListDirectory(d.FullName, out _))
-                    .ToList();
-                var files = dirInfo.EnumerateFiles()
-                    .Where(f => pathPolicy.CanListFile(f.FullName, out _))
-                    .ToList();
-
-                var entryCount = subDirs.Count + files.Count;
-                int processedFiles = 0;
-
-                foreach (var directoryInfo in subDirs)
-                {
-                    if (worker.CancellationPending)
-                    {
-                        e.Cancel = true;
-                        return;
-                    }
-
-                    var directory = directoryInfo.FullName;
-                    Application.Current.Dispatcher.Invoke(() =>
-                    {
-                        FileSystemObjects.Add(new FileSystemObject()
-                        {
-                            Image = FolderManager.GetImageSource(directory, ItemState.Undefined),
-                            Name = directoryInfo.Name,
-                            Path = directory,
-                            Size = 0, // Avoid freezing UI on large folders or unauthorized sub-trees
-                            TotalSpace = 012345667658675846,
-                            FreeSpace = 012345667658675846,
-                            Format = directoryInfo.LastWriteTime.ToString()
-                        });
-                    }, DispatcherPriority.Background);
-
-                    processedFiles++;
-                    if (entryCount > 0)
-                        worker.ReportProgress((int)((double)processedFiles / entryCount * 100));
-                }
-
-                foreach (var fileInfo in files)
-                {
-                    if (worker.CancellationPending)
-                    {
-                        e.Cancel = true;
-                        return;
-                    }
-
-                    var file = fileInfo.FullName;
-                    Application.Current.Dispatcher.Invoke(() =>
-                    {
-                        FileSystemObjects.Add(new FileSystemObject()
-                        {
-                            Image = FileManager.GetImageSource(file),
-                            Name = fileInfo.Name,
-                            Path = file,
-                            Size = fileInfo.Length,
-                            Format = fileInfo.LastWriteTime.ToString(),
-                            CreationTime = fileInfo.CreationTime.ToString(),
-                            TotalSpace = 012345667658675846,
-                            FreeSpace = 012345667658675846
-                        });
-                    }, DispatcherPriority.Background);
-
-                    processedFiles++;
-                    if (entryCount > 0)
-                        worker.ReportProgress((int)((double)processedFiles / entryCount * 100));
-                }
-            }
-            catch (UnauthorizedAccessException ex)
-            {
-                Application.Current.Dispatcher.Invoke(() =>
-                {
-                    MessageBox.Show($"הגישה נדחתה:\n{ex.Message}", "אין גישה", MessageBoxButton.OK, MessageBoxImage.Error, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
-                    TabPath = null;
-                    OpenTabPath();
-                });
-            }
-            catch (Exception ex)
-            {
-                Application.Current.Dispatcher.Invoke(() =>
-                {
-                    MessageBox.Show($"שגיאה בטעינת הנתיב:\n{ex.Message}", "שגיאה", MessageBoxButton.OK, MessageBoxImage.Error, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
-                    TabPath = null;
-                    OpenTabPath();
-                });
-            }
-        }
-    }
-
-    private void worker_ProgressChanged(object sender, ProgressChangedEventArgs e)
-    {
-        ProgressPercent = e.ProgressPercentage;
-    }
-
-    private void worker_RunWorkerCompleted(object sender, RunWorkerCompletedEventArgs e)
-    {
-        if (e.Cancelled) OpenTabPath();
-    }
-
     private static string DeleteFiles(List<string> filePaths)
     {
-        var successList = new List<string>();
         var failureList = new List<string>();
 
         foreach (var filePath in filePaths)
@@ -777,7 +884,6 @@ internal class TabContentViewModel : ViewModel, IDisposable
                 if (File.Exists(filePath))
                 {
                     File.Delete(filePath);
-                    successList.Add(filePath);
                 }
             }
             catch (Exception ex)
@@ -786,14 +892,9 @@ internal class TabContentViewModel : ViewModel, IDisposable
             }
         }
 
-        if (failureList.Any())
-        {
-            return $"לא ניתן היה למחוק חלק מהקבצים:\n{string.Join("\n", failureList)}";
-        }
-        else
-        {
-            return "success";
-        }
+        return failureList.Any()
+            ? $"לא ניתן היה למחוק חלק מהקבצים:\n{string.Join("\n", failureList)}"
+            : "success";
     }
 
     #endregion
