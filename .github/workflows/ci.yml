@@ -1,0 +1,51 @@
+name: Build, Test & Release
+
+on:
+  push:
+    branches:
+      - main
+      - '[0-9]+'
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build-and-test:
+    name: Build, Test & Package Single-File
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore LiteExplorer.sln
+
+      - name: Build solution (Release)
+        run: dotnet build LiteExplorer.sln --configuration Release --no-restore
+
+      - name: Run automated test suite
+        run: dotnet run --project LiteExplorer.Tests/LiteExplorer.Tests.csproj --configuration Release --no-build
+
+      - name: Publish Self-Contained Single-File Executable
+        run: >
+          dotnet publish LiteExplorer/LiteExplorer.csproj
+          --configuration Release
+          --runtime win-x64
+          --self-contained true
+          -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:EnableCompressionInSingleFile=true
+          -o ./publish-standalone
+
+      - name: Upload Single-File Standalone Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ZerachExplorer-Standalone-win-x64
+          path: ./publish-standalone/LiteExplorer.exe
+          if-no-files-found: error

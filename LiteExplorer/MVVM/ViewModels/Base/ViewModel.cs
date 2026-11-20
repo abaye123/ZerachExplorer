@@ -1,18 +1,15 @@
-﻿using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace LiteExplorer.MVVM.ViewModels.Base;
 
-internal abstract class ViewModel : INotifyPropertyChanged
+/// <summary>
+/// Base viewmodel inheriting from CommunityToolkit.Mvvm ObservableObject.
+/// </summary>
+internal abstract class ViewModel : ObservableObject
 {
-    public event PropertyChangedEventHandler PropertyChanged;
-
-    protected virtual void SetValue<T>(ref T field, T value, [CallerMemberName] string propertyName = null)
+    protected virtual bool SetValue<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
     {
-        if (!Equals(field, value))
-        {
-            field = value;
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
-        }
+        return SetProperty(ref field, value, propertyName);
     }
 }
