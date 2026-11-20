@@ -337,6 +337,62 @@ public class Program
 
 
 
+                // Stage 7 - Section 7.1: Audit Logging Service & Entry Models
+        string tempAuditPath = Path.Combine(Path.GetTempPath(), $"audit_test_{Guid.NewGuid():N}.log");
+        var auditService = new AuditService(tempAuditPath);
+        auditService.Log(AuditEventType.FileOpened, @"D:\Document.pdf", "Opened file", true);
+        auditService.Log(AuditEventType.SecurityBlocked, @"C:\Windows\System32", "System path blocked", false);
+
+        var recentEntries = auditService.GetRecentEntries(10);
+        Assert(recentEntries.Count == 2, "AuditService records and returns logged entries");
+        Assert(recentEntries[0].EventType == AuditEventType.SecurityBlocked && !recentEntries[0].Success, "Recent audit entry is newest blocked event");
+        Assert(recentEntries[1].EventType == AuditEventType.FileOpened && recentEntries[1].Success, "Prior audit entry is file opened event");
+
+        string formattedEntry = recentEntries[0].ToString();
+        var parsedEntry = AuditEntry.Parse(formattedEntry);
+        Assert(parsedEntry != null && parsedEntry.EventType == AuditEventType.SecurityBlocked && parsedEntry.Target == @"C:\Windows\System32", "AuditEntry parses formatted log line correctly");
+
+        auditService.ClearLogs();
+        Assert(auditService.GetRecentEntries(10).Count == 0, "ClearLogs wipes audit log entries");
+        if (File.Exists(tempAuditPath)) { try { File.Delete(tempAuditPath); } catch { } }
+
+        // Stage 7 - Section 7.2: Session Reset & Privacy Service
+        bool sessionResetFired = false;
+        EventHandler resetHandler = (s, e) => { sessionResetFired = true; };
+        SessionService.Instance.SessionReset += resetHandler;
+        SessionService.Instance.ResetSession();
+        SessionService.Instance.SessionReset -= resetHandler;
+        Assert(sessionResetFired, "SessionService raises SessionReset event upon reset");
+
+        // Stage 7 - Section 7.3: Kiosk Controller & Lockdown Exit Interception
+        var kiosk = new KioskController();
+        Assert(!kiosk.IsKioskModeEnabled, "Default kiosk mode is disabled");
+        Assert(!kiosk.PreventAppExit, "Default exit prevention is disabled");
+
+        var cancelArgsDefault = new System.ComponentModel.CancelEventArgs();
+        bool canCloseDefault = kiosk.HandleWindowClosing(null, cancelArgsDefault, () => true);
+        Assert(canCloseDefault && !cancelArgsDefault.Cancel, "HandleWindowClosing allows close when PreventAppExit is false");
+
+        kiosk.PreventAppExit = true;
+        var cancelArgsBlocked = new System.ComponentModel.CancelEventArgs();
+        bool canCloseFailedAuth = kiosk.HandleWindowClosing(null, cancelArgsBlocked, () => false);
+        Assert(!canCloseFailedAuth && cancelArgsBlocked.Cancel, "HandleWindowClosing blocks exit when authentication fails");
+
+        var cancelArgsAllowed = new System.ComponentModel.CancelEventArgs();
+        bool canClosePassedAuth = kiosk.HandleWindowClosing(null, cancelArgsAllowed, () => true);
+        Assert(canClosePassedAuth && !kiosk.PreventAppExit, "HandleWindowClosing allows exit and resets PreventAppExit on valid auth");
+
+        // Stage 7 - Section 7.4: ViewMode Toggling & Commands
+        Assert(testVm.CurrentViewMode == ViewMode.Details, "Default ViewMode is Details");
+        Assert(testVm.IsDetailsView && !testVm.IsTilesView, "IsDetailsView is true and IsTilesView is false by default");
+
+        testVm.ToggleViewModeCmd.Execute(null);
+        Assert(testVm.CurrentViewMode == ViewMode.Tiles, "ToggleViewModeCmd switches ViewMode to Tiles");
+        Assert(!testVm.IsDetailsView && testVm.IsTilesView, "IsTilesView is true and IsDetailsView is false after toggle");
+
+        testVm.ToggleViewModeCmd.Execute(null);
+        Assert(testVm.CurrentViewMode == ViewMode.Details, "Second toggle restores Details ViewMode");
+
         testVm.Dispose();
 
         Console.WriteLine($"\nTest Results: {passed} passed, {failed} failed.");

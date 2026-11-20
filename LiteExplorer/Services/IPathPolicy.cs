@@ -1,3 +1,4 @@
+using LiteExplorer.MVVM.Models;
 using System.Collections.Generic;
 using System.IO;
 
@@ -10,9 +11,24 @@ namespace LiteExplorer.Services;
 public interface IPathPolicy
 {
     /// <summary>
+    /// Active kiosk operational profile.
+    /// </summary>
+    KioskProfile Profile { get; set; }
+
+    /// <summary>
+    /// Effective path and file action permissions.
+    /// </summary>
+    PathPermissions Permissions { get; set; }
+
+    /// <summary>
     /// File extensions allowed for opening and copying.
     /// </summary>
     IReadOnlyCollection<string> AllowedExtensions { get; }
+
+    /// <summary>
+    /// Updates the whitelist of allowed extensions.
+    /// </summary>
+    void SetAllowedExtensions(IEnumerable<string> extensions);
 
     /// <summary>
     /// Explicitly whitelisted drive roots (e.g. "D:\").

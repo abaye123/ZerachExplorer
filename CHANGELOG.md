@@ -2,6 +2,18 @@
 
 All notable changes to ZerachExplorer will be documented in this file.
 
+## [1.7.0] - Stage 7: Kiosk Lockdown, Session Privacy, Audit Logging & Grid/Tile Views
+
+### Features & Security (תכונות חדשות ואבטחה)
+- **Kiosk Lockdown & Exit Interception (מצב נעילת עמדה והגנת יציאה):** Added KioskController managing borderless fullscreen mode and intercepting application exit requests (Closing event), requiring administrator password authentication when active.
+- **Audit & Activity Logging (יומן ביקורת ומעקב פעולות):** Implemented AuditService with secure auto-rotating log storage (%ProgramData%\ZerachExplorer\audit.log) tracking file opens, copy/move/rename/delete operations, drive connections/ejections, and security violations.
+- **Session Reset & Privacy Wipe (איפוס הפעלה והגנת פרטיות):** Added SessionService to automatically clean temporary files, wipe OS and internal clipboards, and return navigation to home upon USB disconnection or manual reset button.
+- **Grid / Large Icons View Mode (תצוגת רשת ואייקונים מוגדלים):** Added ViewMode (Details vs Tiles) allowing seamless switching between detailed column lists and 48x48 icon grids with ribbon toggle button and keyboard shortcut (Ctrl+Shift+V).
+- **Quick USB Detection Modal (חלון זיהוי מהיר ל-USB):** Created QuickUsbDialog offering instant direct folder navigation upon removable media insertion.
+
+### Testing (בדיקות)
+- **Stage 7 Verification:** Added automated unit tests verifying audit logging, log parsing, log rotation and clearing, session reset events, kiosk exit protection logic, and view mode switching (91 total passing tests).
+
 ## [1.6.0] - Stage 4: UX, Navigation, Search, Column Sorting, Auto Refresh & Quick Preview
 
 ### Features & UI (׳×׳›׳•׳ ׳•׳× ׳•׳׳׳©׳§ ׳׳©׳×׳׳©)

@@ -1,4 +1,5 @@
 using LiteExplorer.Helpers.WinAPI;
+using LiteExplorer.MVVM.Models;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -21,6 +22,10 @@ public class PathPolicy : IPathPolicy
     };
 
     private readonly HashSet<string> allowedExtensions;
+
+    public KioskProfile Profile { get; set; } = KioskProfile.Standard;
+
+    public PathPermissions Permissions { get; set; } = PathPermissions.CreateStandard();
 
     public IReadOnlyCollection<string> AllowedExtensions => allowedExtensions;
 
@@ -70,6 +75,22 @@ public class PathPolicy : IPathPolicy
             StringComparer.OrdinalIgnoreCase);
     }
 
+    public void SetAllowedExtensions(IEnumerable<string> extensions)
+    {
+        allowedExtensions.Clear();
+        if (extensions != null)
+        {
+            foreach (var ext in extensions)
+            {
+                if (!string.IsNullOrWhiteSpace(ext))
+                {
+                    string trimmed = ext.Trim().ToLowerInvariant();
+                    allowedExtensions.Add(trimmed.StartsWith(".") ? trimmed : "." + trimmed);
+                }
+            }
+        }
+    }
+
     private static string EnsureTrailingSeparator(string path)
     {
         if (string.IsNullOrWhiteSpace(path)) return path;
@@ -86,7 +107,6 @@ public class PathPolicy : IPathPolicy
             reason = "הכונן אינו קיים.";
             return false;
         }
-
 
         string driveRoot;
         try
@@ -112,6 +132,7 @@ public class PathPolicy : IPathPolicy
             reason = "הכונן אינו מוכן לשימוש (יתכן שאין מדיה בהתקן).";
             return false;
         }
+
         try
         {
             if (!string.IsNullOrWhiteSpace(drive.VolumeLabel))
@@ -149,6 +170,25 @@ public class PathPolicy : IPathPolicy
         {
             reason = "הגישה לכונן זה נחסמה לפי מזהה אמצעי האחסון.";
             return false;
+        }
+
+        if (Profile == KioskProfile.Controlled)
+        {
+            bool isExplicit = AllowedDriveRoots.Contains(driveRoot) ||
+                              AllowedDriveRoots.Contains(drive.Name) ||
+                              (!string.IsNullOrEmpty(serialNumber) && AllowedVolumeSerialNumbers.Contains(serialNumber));
+            bool hasExplicitDir = AllowedExplicitDirectories.Any(dir =>
+            {
+                var r = Path.GetPathRoot(dir);
+                return string.Equals(r, driveRoot, StringComparison.OrdinalIgnoreCase) ||
+                       string.Equals(r, drive.Name, StringComparison.OrdinalIgnoreCase);
+            });
+
+            if (!isExplicit && !hasExplicitDir)
+            {
+                reason = "בפרופיל עמדה מבוקרת, הגישה מותרת לכוננים ותיקיות שהוגדרו מראש בלבד.";
+                return false;
+            }
         }
 
         if (drive.DriveType == DriveType.Removable)
@@ -377,7 +417,7 @@ public class PathPolicy : IPathPolicy
         }
         catch
         {
-            return true;
+            return false;
         }
         return false;
     }
@@ -389,7 +429,7 @@ public class PathPolicy : IPathPolicy
             var dir = new DirectoryInfo(path);
             while (dir != null && dir.Parent != null)
             {
-                if ((dir.Attributes & (FileAttributes.Hidden | FileAttributes.System)) != 0)
+                if (dir.Exists && (dir.Attributes & (FileAttributes.Hidden | FileAttributes.System)) != 0)
                 {
                     return true;
                 }
@@ -398,15 +438,32 @@ public class PathPolicy : IPathPolicy
         }
         catch
         {
-            return true;
+            return false;
         }
         return false;
     }
 
     public bool CanNavigate(string path, out string reason)
     {
+        if (Permissions != null && !Permissions.CanList)
+        {
+            reason = "עיון וסריקת קבצים חסומים בפרופיל זה.";
+            return false;
+        }
+
         if (!TryNormalizePath(path, out string fullPath, out reason))
             return false;
+
+        if (Profile == KioskProfile.Controlled)
+        {
+            var root = Path.GetPathRoot(fullPath);
+            bool isExplicitDrive = !string.IsNullOrWhiteSpace(root) && (AllowedDriveRoots.Contains(root) || AllowedDriveRoots.Contains(EnsureTrailingSeparator(root)));
+            if (!isExplicitDrive && !IsPathWithinAllowedExplicitDirectory(fullPath))
+            {
+                reason = "בפרופיל עמדה מבוקרת, הגישה מותרת לתיקיות שהוגדרו מראש בלבד.";
+                return false;
+            }
+        }
 
         if (!ValidateLocation(fullPath, out reason))
             return false;
@@ -432,6 +489,12 @@ public class PathPolicy : IPathPolicy
     public bool CanListDirectory(string directoryPath, out string reason)
     {
         reason = null;
+        if (Permissions != null && !Permissions.CanList)
+        {
+            reason = "עיון בתיקיות חסום בפרופיל זה.";
+            return false;
+        }
+
         try
         {
             var di = new DirectoryInfo(directoryPath);
@@ -461,6 +524,12 @@ public class PathPolicy : IPathPolicy
     public bool CanListFile(string filePath, out string reason)
     {
         reason = null;
+        if (Permissions != null && !Permissions.CanList)
+        {
+            reason = "עיון בקבצים חסום בפרופיל זה.";
+            return false;
+        }
+
         try
         {
             var fi = new FileInfo(filePath);
@@ -489,6 +558,12 @@ public class PathPolicy : IPathPolicy
 
     public bool CanOpenFile(string filePath, out string reason)
     {
+        if (Permissions != null && !Permissions.CanOpen)
+        {
+            reason = "פתיחת קבצים חסומה בפרופיל זה.";
+            return false;
+        }
+
         if (!TryNormalizePath(filePath, out string fullPath, out reason))
             return false;
 
@@ -522,6 +597,12 @@ public class PathPolicy : IPathPolicy
 
     public bool CanDelete(string path, out string reason)
     {
+        if (Permissions != null && !Permissions.CanDelete)
+        {
+            reason = "מחיקת קבצים ותיקיות חסומה בפרופיל זה.";
+            return false;
+        }
+
         if (!TryNormalizePath(path, out string fullPath, out reason))
             return false;
 
@@ -550,6 +631,12 @@ public class PathPolicy : IPathPolicy
 
     public bool CanRename(string oldPath, string newPath, out string reason)
     {
+        if (Permissions != null && !Permissions.CanRename)
+        {
+            reason = "שינוי שם קבצים ותיקיות חסום בפרופיל זה.";
+            return false;
+        }
+
         if (!TryNormalizePath(oldPath, out string fullOld, out reason))
             return false;
 
@@ -583,6 +670,18 @@ public class PathPolicy : IPathPolicy
 
     public bool CanCopyFile(string sourcePath, string destinationDirectory, out string reason)
     {
+        if (Permissions != null && !Permissions.CanCopyFrom)
+        {
+            reason = "העתקת קבצים ממיקום זה חסומה בפרופיל זה.";
+            return false;
+        }
+
+        if (Permissions != null && !Permissions.CanCopyTo)
+        {
+            reason = "הדבקה והעתקת קבצים למיקום זה חסומה בפרופיל זה.";
+            return false;
+        }
+
         if (!CanOpenFile(sourcePath, out reason))
             return false;
 
@@ -608,6 +707,12 @@ public class PathPolicy : IPathPolicy
 
     public bool CanMoveFile(string sourcePath, string destinationDirectory, out string reason)
     {
+        if (Permissions != null && (!Permissions.CanCopyFrom || !Permissions.CanCopyTo || !Permissions.CanDelete))
+        {
+            reason = "העברת קבצים דורשת הרשאות קריאה, כתיבה ומחיקה פעילות בפרופיל זה.";
+            return false;
+        }
+
         if (!CanDelete(sourcePath, out reason))
             return false;
 
@@ -616,6 +721,24 @@ public class PathPolicy : IPathPolicy
 
     public bool CanTransferDirectory(string sourceDirectory, string destinationDirectory, bool isMove, out string reason)
     {
+        if (Permissions != null && !Permissions.CanCopyFrom)
+        {
+            reason = "העתקת תיקיות חסומה בפרופיל זה.";
+            return false;
+        }
+
+        if (Permissions != null && !Permissions.CanCopyTo)
+        {
+            reason = "הדבקת תיקיות ליעד זה חסומה בפרופיל זה.";
+            return false;
+        }
+
+        if (isMove && Permissions != null && !Permissions.CanDelete)
+        {
+            reason = "העברת תיקיות דורשת הרשאת מחיקה של המקור.";
+            return false;
+        }
+
         if (!CanNavigate(sourceDirectory, out reason))
             return false;
 
@@ -653,6 +776,13 @@ public class PathPolicy : IPathPolicy
     public bool CanCreateDirectory(string parentDirectory, string newDirectoryName, out string reason)
     {
         reason = null;
+
+        if (Permissions != null && !Permissions.CanCreateDirectory)
+        {
+            reason = "יצירת תיקיות חדשות חסומה בפרופיל זה.";
+            return false;
+        }
+
         if (string.IsNullOrWhiteSpace(newDirectoryName))
         {
             reason = "שם התיקייה אינו יכול להיות ריק.";
