@@ -1,0 +1,91 @@
+name: Release ZerachExplorer
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release version tag (e.g. v1.7.0)'
+        required: false
+        default: ''
+  workflow_call:
+    inputs:
+      tag:
+        description: 'Release version tag (e.g. v1.7.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build, Verify & Publish Release
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore and build solution (Release)
+        run: |
+          dotnet restore LiteExplorer.sln
+          dotnet build LiteExplorer.sln --configuration Release --no-restore
+
+      - name: Run automated test suite
+        run: dotnet run --project LiteExplorer.Tests/LiteExplorer.Tests.csproj --configuration Release --no-build
+
+      - name: Publish Single-File Executable
+        run: >
+          dotnet publish LiteExplorer/LiteExplorer.csproj
+          --configuration Release
+          --runtime win-x64
+          --self-contained true
+          -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:EnableCompressionInSingleFile=true
+          -o ./release-dist
+
+      - name: Package ZIP and SHA-256 checksums
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "./release-dist/LiteExplorer.exe" -DestinationPath "./release-dist/ZerachExplorer-win-x64.zip" -Force
+          $exeHash = (Get-FileHash "./release-dist/LiteExplorer.exe" -Algorithm SHA256).Hash
+          $zipHash = (Get-FileHash "./release-dist/ZerachExplorer-win-x64.zip" -Algorithm SHA256).Hash
+          @(
+            "$exeHash  LiteExplorer.exe",
+            "$zipHash  ZerachExplorer-win-x64.zip"
+          ) | Out-File -FilePath "./release-dist/checksums.sha256" -Encoding ascii
+
+      - name: Resolve release tag
+        id: meta
+        shell: pwsh
+        run: |
+          $tag = "${{ inputs.tag }}"
+          if ([string]::IsNullOrWhiteSpace($tag) -and "${{ github.ref }}".StartsWith("refs/tags/v")) {
+            $tag = "${{ github.ref_name }}"
+          }
+          if ([string]::IsNullOrWhiteSpace($tag)) {
+            [xml]$props = Get-Content "Directory.Build.props"
+            $ver = $props.Project.PropertyGroup.Version.Trim()
+            $tag = "v$ver"
+          }
+          Write-Output "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          name: ZerachExplorer ${{ steps.meta.outputs.tag }}
+          generate_release_notes: true
+          files: |
+            ./release-dist/LiteExplorer.exe
+            ./release-dist/ZerachExplorer-win-x64.zip
+            ./release-dist/checksums.sha256

@@ -9,14 +9,22 @@
              xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
              d:DataContext="{d:DesignInstance vm:MainWindowViewModel, IsDesignTimeCreatable=False}"
              mc:Ignorable="d"
-             Width="1000"
-             Height="600"
-             Title="{Binding CurrentTab.TabTitle, TargetNullValue='Home'}"
+             Width="1120"
+             Height="680"
+             MinWidth="760"
+             MinHeight="480"
+             Title="{Binding CurrentTab.TabTitle, TargetNullValue='בית'}"
+             FontFamily="Segoe UI Variable Text, Segoe UI"
+             Background="#F0F4F9"
              ExtendsContentIntoTitleBar="True"
              WindowBackdropType="Mica"
              WindowCornerPreference="Round"
              FlowDirection="RightToLeft"
              WindowStartupLocation="CenterScreen">
+
+    <ui:UiWindow.Resources>
+        <c:NonEmptyStringToVisibilityConverter x:Key="NonEmptyStringToVisibilityConverter" />
+    </ui:UiWindow.Resources>
 
     <ui:UiWindow.InputBindings>
         <KeyBinding Key="Q"
@@ -31,28 +39,56 @@
                     Modifiers="Ctrl" />
     </ui:UiWindow.InputBindings>
 
-    <DockPanel>
+    <DockPanel Background="#F0F4F9">
+        <!-- Window Title Bar -->
         <ui:TitleBar Title="{Binding MainWindowTitle}"
-                     Padding="5"
+                     Height="32"
+                     Padding="10,4,10,0"
                      DockPanel.Dock="Top"
                      Icon="/Assets/app.ico"
                      UseSnapLayout="True" />
 
-        <StatusBar Padding="1"
-                   DataContext="{Binding CurrentTab}"
-                   DockPanel.Dock="Bottom">
-            <StatusBarItem >
-                <Label Content="{Binding FileSystemObjects.Count}"
-                       Foreground="#E41105A2"
-                       ContentStringFormat=" {0} פריטים." />
-            </StatusBarItem>
-            <StatusBarItem>
-                <Label Content="{Binding CurrentFileSystemObject.Path}"
-                       Foreground="#E41105A2"
-                       ContentStringFormat="הפריט שנבחר: {0}" />
-            </StatusBarItem>
-            <StatusBarItem HorizontalAlignment="Right">
-                <ProgressBar Width="150"
+        <!-- Windows 11 Style Status Bar -->
+        <Border DockPanel.Dock="Bottom"
+                DataContext="{Binding CurrentTab}"
+                Background="#F7F9FC"
+                BorderBrush="#E5E8EC"
+                BorderThickness="0,1,0,0"
+                Height="26"
+                Padding="12,0">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Grid.Column="0"
+                           VerticalAlignment="Center"
+                           Foreground="#5C5C5C"
+                           FontSize="12"
+                           Text="{Binding FileSystemObjects.Count, StringFormat='{}{0} פריטים'}" />
+
+                <Border Grid.Column="1"
+                        Width="1"
+                        Height="12"
+                        Margin="10,0"
+                        VerticalAlignment="Center"
+                        Background="#DCDFE4"
+                        Visibility="{Binding CurrentFileSystemObject.Path, Converter={StaticResource NonEmptyStringToVisibilityConverter}, FallbackValue=Collapsed}" />
+
+                <TextBlock Grid.Column="2"
+                           VerticalAlignment="Center"
+                           Foreground="#5C5C5C"
+                           FontSize="12"
+                           TextTrimming="CharacterEllipsis"
+                           Text="{Binding CurrentFileSystemObject.Path, StringFormat='נבחר: {0}'}" />
+
+                <ProgressBar Grid.Column="3"
+                             Width="140"
+                             Height="4"
+                             VerticalAlignment="Center"
                              Value="{Binding ProgressPercent}">
                     <ProgressBar.Style>
                         <Style TargetType="ProgressBar"
@@ -67,11 +103,15 @@
                         </Style>
                     </ProgressBar.Style>
                 </ProgressBar>
-            </StatusBarItem>
-        </StatusBar>
+            </Grid>
+        </Border>
 
+        <!-- Windows 11 Explorer Tab Control -->
         <TabControl ItemsSource="{Binding Tabs}"
-                    SelectedItem="{Binding CurrentTab}">
+                    SelectedItem="{Binding CurrentTab}"
+                    Background="#FFFFFF"
+                    BorderThickness="0"
+                    Padding="0">
             <TabControl.Resources>
                 <c:BoolToVisibility x:Key="BoolToVisibilityConverter" />
             </TabControl.Resources>
@@ -83,31 +123,39 @@
                             <RowDefinition Height="*" />
                         </Grid.RowDefinitions>
 
-                        <ScrollViewer Grid.Row="0"
-                                      HorizontalScrollBarVisibility="Auto">
-                            <StackPanel Orientation="Horizontal">
-                                <TabPanel x:Name="HeaderPanel"
-                                          Margin="3,3,0,0"
-                                          Panel.ZIndex="1"
-                                          Background="Transparent"
-                                          IsItemsHost="True"
-                                          KeyboardNavigation.TabIndex="1" />
-                                <ui:Button Margin="5,0"
-                                           Padding="5"
-                                           Command="{Binding AddTabCmd}"
-                                           Icon="Add28"
-                                           BorderBrush="Transparent"
-                                           Background="Transparent"
-                                           ToolTip="פתח כרטיסיה חדשה (Ctrl+T)" />
-                            </StackPanel>
-                        </ScrollViewer>
+                        <!-- Tab Strip -->
+                        <Border Grid.Row="0"
+                                Background="#EBF0F5"
+                                Padding="8,4,8,0">
+                            <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                                          VerticalScrollBarVisibility="Disabled">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Bottom">
+                                    <TabPanel x:Name="HeaderPanel"
+                                              Panel.ZIndex="1"
+                                              Background="Transparent"
+                                              IsItemsHost="True"
+                                              KeyboardNavigation.TabIndex="1" />
+                                    <ui:Button Margin="4,0,4,4"
+                                               Width="28"
+                                               Height="28"
+                                               MinWidth="0"
+                                               MinHeight="0"
+                                               Padding="0"
+                                               Command="{Binding AddTabCmd}"
+                                               Icon="Add16"
+                                               Foreground="#333333"
+                                               BorderBrush="Transparent"
+                                               Background="Transparent"
+                                               ToolTip="פתח כרטיסיה חדשה (Ctrl+T)" />
+                                </StackPanel>
+                            </ScrollViewer>
+                        </Border>
 
+                        <!-- Tab Content -->
                         <Border x:Name="Border"
                                 Grid.Row="1"
-                                Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="1"
-                                CornerRadius="0,4,4,4"
+                                Background="#FFFFFF"
+                                BorderThickness="0"
                                 KeyboardNavigation.DirectionalNavigation="Contained"
                                 KeyboardNavigation.TabIndex="2"
                                 KeyboardNavigation.TabNavigation="Local">
@@ -117,82 +165,40 @@
                                               VerticalAlignment="Stretch"
                                               ContentSource="SelectedContent" />
                         </Border>
-                        <VisualStateManager.VisualStateGroups>
-                            <VisualStateGroup x:Name="CommonStates">
-                                <VisualState x:Name="Disabled">
-                                    <Storyboard>
-                                        <ColorAnimationUsingKeyFrames Storyboard.TargetName="Border"
-                                                                      Storyboard.TargetProperty="(Border.BorderBrush).                     (SolidColorBrush.Color)">
-                                            <EasingColorKeyFrame KeyTime="0"
-                                                                 Value="#FFAAAAAA" />
-                                        </ColorAnimationUsingKeyFrames>
-                                    </Storyboard>
-                                </VisualState>
-                            </VisualStateGroup>
-                        </VisualStateManager.VisualStateGroups>
                     </Grid>
                 </ControlTemplate>
             </TabControl.Template>
 
             <TabControl.ItemContainerStyle>
-                <Style BasedOn="{StaticResource {x:Type TabItem}}"
-                       TargetType="{x:Type TabItem}">
+                <Style TargetType="{x:Type TabItem}">
+                    <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+                    <Setter Property="Background" Value="Transparent" />
+                    <Setter Property="Foreground" Value="#333333" />
                     <Setter Property="Template">
                         <Setter.Value>
                             <ControlTemplate TargetType="{x:Type TabItem}">
-                                <Grid x:Name="Root">
-                                    <Border x:Name="Border"
-                                            MinWidth="180"
-                                            MinHeight="36"
-                                            Margin="3,0,0,0"
-                                            Padding="10,0,12,0"
-                                            Background="{TemplateBinding Background}"
-                                            BorderBrush="{TemplateBinding BorderBrush}"
-                                            BorderThickness="1,1,1,0"
-                                            CornerRadius="5,10,0,0">
-
-                                        <ContentPresenter x:Name="ContentSite"
-                                                          Grid.Column="0"
-                                                          Margin="0"
-                                                          HorizontalAlignment="Stretch"
-                                                          VerticalAlignment="Center"
-                                                          ContentSource="Header"
-                                                          RecognizesAccessKey="True" />
-                                    </Border>
-
-                                    <VisualStateManager.VisualStateGroups>
-                                        <VisualStateGroup x:Name="SelectionStates">
-                                            <VisualState x:Name="Unselected" />
-                                            <VisualState x:Name="Selected">
-                                                <Storyboard>
-                                                    <DoubleAnimation Storyboard.TargetName="Border"
-                                                                     Storyboard.TargetProperty="(Panel.Background).(SolidColorBrush.Opacity)"
-                                                                     From="0.0"
-                                                                     To="1.0"
-                                                                     Duration="0:0:.16" />
-                                                </Storyboard>
-                                            </VisualState>
-                                        </VisualStateGroup>
-                                        <VisualStateGroup x:Name="CommonStates">
-                                            <VisualState x:Name="Normal" />
-                                            <VisualState x:Name="MouseOver" />
-                                            <VisualState x:Name="Disabled">
-                                                <Storyboard>
-                                                    <DoubleAnimation Storyboard.TargetName="Border"
-                                                                     Storyboard.TargetProperty="(Panel.Background).(SolidColorBrush.Opacity)"
-                                                                     From="0.0"
-                                                                     To="0.5"
-                                                                     Duration="0:0:.16" />
-                                                </Storyboard>
-                                            </VisualState>
-                                        </VisualStateGroup>
-                                    </VisualStateManager.VisualStateGroups>
-                                </Grid>
+                                <Border x:Name="TabBorder"
+                                        MinWidth="160"
+                                        MaxWidth="240"
+                                        Height="34"
+                                        Margin="2,0"
+                                        Padding="12,0,8,0"
+                                        Background="Transparent"
+                                        CornerRadius="8,8,0,0">
+                                    <ContentPresenter x:Name="ContentSite"
+                                                      HorizontalAlignment="Stretch"
+                                                      VerticalAlignment="Center"
+                                                      ContentSource="Header"
+                                                      RecognizesAccessKey="True" />
+                                </Border>
                                 <ControlTemplate.Triggers>
-                                    <Trigger Property="IsSelected"
-                                             Value="True">
-                                        <Setter Property="Panel.ZIndex"
-                                                Value="100" />
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="TabBorder" Property="Background" Value="#E0E6EE" />
+                                    </Trigger>
+                                    <Trigger Property="IsSelected" Value="True">
+                                        <Setter Property="Panel.ZIndex" Value="100" />
+                                        <Setter TargetName="TabBorder" Property="Background" Value="#F7F9FC" />
+                                        <Setter Property="Foreground" Value="#1A1A1A" />
                                     </Trigger>
                                 </ControlTemplate.Triggers>
                             </ControlTemplate>
@@ -205,17 +211,26 @@
                 <DataTemplate>
                     <Grid VerticalAlignment="Center">
                         <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <Label Grid.Column="0"
-                               FlowDirection="RightToLeft"
-                               Foreground="Black"
-                               VerticalAlignment="Center"
-                               Padding="0"
-                               Margin="0,0,8,0"
-                               Content="{Binding TabTitle, TargetNullValue='בית'}" />
-                        <ui:Button Grid.Column="1"
+                        <ui:SymbolIcon Grid.Column="0"
+                                       Symbol="Folder20"
+                                       FontSize="15"
+                                       Foreground="#E0A628"
+                                       Margin="0,0,8,0"
+                                       VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="1"
+                                   FlowDirection="RightToLeft"
+                                   Foreground="#1A1A1A"
+                                   FontSize="12"
+                                   FontWeight="Medium"
+                                   VerticalAlignment="Center"
+                                   TextTrimming="CharacterEllipsis"
+                                   Margin="0,0,8,0"
+                                   Text="{Binding TabTitle, TargetNullValue='בית'}" />
+                        <ui:Button Grid.Column="2"
                                    Width="20"
                                    Height="20"
                                    MinWidth="0"
@@ -225,7 +240,8 @@
                                    HorizontalAlignment="Center"
                                    Command="{Binding DataContext.CloseTabCmd, RelativeSource={RelativeSource AncestorType=ui:UiWindow}}"
                                    CommandParameter="{Binding}"
-                                   Icon="Dismiss16"
+                                   Icon="Dismiss12"
+                                   Foreground="#5C5C5C"
                                    Cursor="Hand"
                                    Focusable="False"
                                    ToolTip="סגור כרטיסיה (Ctrl+W)"

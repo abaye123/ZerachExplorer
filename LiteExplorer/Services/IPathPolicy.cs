@@ -66,6 +66,11 @@ public interface IPathPolicy
     IEnumerable<DriveInfo> GetAllowedDrives();
 
     /// <summary>
+    /// Normalizes a raw path and rejects UNC, reserved device names, and NTFS ADS.
+    /// </summary>
+    bool TryNormalizePath(string rawPath, out string normalizedPath, out string reason);
+
+    /// <summary>
     /// Validates whether navigation to the given directory path is permitted.
     /// </summary>
     bool CanNavigate(string path, out string reason);
@@ -84,6 +89,11 @@ public interface IPathPolicy
     /// Validates whether a file is permitted to be opened / launched.
     /// </summary>
     bool CanOpenFile(string filePath, out string reason);
+
+    /// <summary>
+    /// Validates whether a file is permitted to be previewed in the Quick Preview pane.
+    /// </summary>
+    bool CanPreviewFile(string filePath, out string reason);
 
     /// <summary>
     /// Validates whether a file or directory is permitted to be deleted.

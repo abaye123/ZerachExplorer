@@ -90,6 +90,20 @@ internal class FileSystemObject : ViewModel
         set => SetValue(ref isDirectory, value);
     }
 
+    private bool isDrive;
+    public bool IsDrive
+    {
+        get => isDrive;
+        set => SetValue(ref isDrive, value);
+    }
+
+    private bool isRemovableDrive;
+    public bool IsRemovableDrive
+    {
+        get => isRemovableDrive;
+        set => SetValue(ref isRemovableDrive, value);
+    }
+
     private bool isCalculatingSize;
     public bool IsCalculatingSize
     {

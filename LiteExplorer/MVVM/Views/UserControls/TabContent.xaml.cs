@@ -18,9 +18,9 @@ public partial class TabContent
 
     private void OnItemsSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (DataContext is TabContentViewModel vm)
+        if (DataContext is TabContentViewModel vm && sender is ListBox listBox)
         {
-            vm.SetSelectedItems(items.SelectedItems.OfType<FileSystemObject>());
+            vm.SetSelectedItems(listBox.SelectedItems.OfType<FileSystemObject>());
         }
     }
 

@@ -8,6 +8,11 @@ on:
   pull_request:
     branches:
       - main
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build-and-test:
@@ -30,7 +35,19 @@ jobs:
         run: dotnet build LiteExplorer.sln --configuration Release --no-restore
 
       - name: Run automated test suite
-        run: dotnet run --project LiteExplorer.Tests/LiteExplorer.Tests.csproj --configuration Release --no-build
+        shell: pwsh
+        run: |
+          $testOutput = dotnet run --project LiteExplorer.Tests/LiteExplorer.Tests.csproj --configuration Release --no-build 2>&1
+          $exitCode = $LASTEXITCODE
+          $testOutput | ForEach-Object { Write-Host $_ }
+          $summaryLine = ($testOutput | Select-String -Pattern "Test Results:.*").Line
+          "## ZerachExplorer CI Test Results" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          if ($summaryLine) {
+            "**$summaryLine**" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          }
+          if ($exitCode -ne 0) {
+            exit $exitCode
+          }
 
       - name: Publish Self-Contained Single-File Executable
         run: >
@@ -43,9 +60,26 @@ jobs:
           -p:EnableCompressionInSingleFile=true
           -o ./publish-standalone
 
+      - name: Verify executable and generate SHA-256 checksum
+        shell: pwsh
+        run: |
+          $exePath = "./publish-standalone/LiteExplorer.exe"
+          if (-not (Test-Path $exePath)) {
+            Write-Error "Published executable not found at $exePath"
+            exit 1
+          }
+          $hash = (Get-FileHash -Path $exePath -Algorithm SHA256).Hash
+          "$hash  LiteExplorer.exe" | Out-File -FilePath "./publish-standalone/LiteExplorer.exe.sha256" -Encoding ascii
+          $sizeMB = [math]::Round((Get-Item $exePath).Length / 1MB, 2)
+          "### Standalone Artifact" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          "- **File:** ``LiteExplorer.exe`` ($sizeMB MB)" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          "- **SHA-256:** ``$hash``" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+
       - name: Upload Single-File Standalone Artifact
         uses: actions/upload-artifact@v4
         with:
           name: ZerachExplorer-Standalone-win-x64
-          path: ./publish-standalone/LiteExplorer.exe
+          path: |
+            ./publish-standalone/LiteExplorer.exe
+            ./publish-standalone/LiteExplorer.exe.sha256
           if-no-files-found: error
