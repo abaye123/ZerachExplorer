@@ -1,0 +1,11 @@
+# Private planning & roadmap files (will never be uploaded to GitHub)
+ROADMAP.md
+IMPROVEMENTS.md
+*Research_and_Roadmap.md
+
+# Build results and IDE files
+.vs/
+[Bb]in/
+[Oo]bj/
+*.user
+*.suo
