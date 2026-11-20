@@ -12,7 +12,7 @@ public class DriveEjectService : IDriveEjectService
 {
     private readonly IPathPolicy pathPolicy;
 
-    public DriveEjectService(IPathPolicy pathPolicy = null)
+    public DriveEjectService(IPathPolicy? pathPolicy = null)
     {
         this.pathPolicy = pathPolicy ?? new PathPolicy();
     }
