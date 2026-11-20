@@ -1,4 +1,4 @@
-<UserControl x:Class="LiteExplorer.MVVM.Views.UserControls.TabContent"
+﻿<UserControl x:Class="LiteExplorer.MVVM.Views.UserControls.TabContent"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -28,6 +28,7 @@
         <KeyBinding Command="{Binding RefreshCmd}" Key="F5" />
         <KeyBinding Command="{Binding TogglePreviewPaneCmd}" Modifiers="Alt" Key="P" />
         <KeyBinding Command="{Binding ToggleViewModeCmd}" Modifiers="Ctrl+Shift" Key="V" />
+        <KeyBinding Command="{Binding OpenAdminCmd}" Modifiers="Ctrl+Shift" Key="A" />
     </UserControl.InputBindings>
 
     <Grid>
@@ -73,8 +74,8 @@
                 <StackPanel Orientation="Horizontal" DockPanel.Dock="Right">
                     <ui:Button Command="{Binding CreateDirectoryCmd}"
                                Icon="FolderAdd24"
-                               Content="תיקייה חדשה"
-                               ToolTip="תיקייה חדשה (Ctrl+Shift+N)" />
+                               Content="׳×׳™׳§׳™׳™׳” ׳—׳“׳©׳”"
+                               ToolTip="׳×׳™׳§׳™׳™׳” ׳—׳“׳©׳” (Ctrl+Shift+N)" />
 
                     <Separator />
 
@@ -82,47 +83,47 @@
                                Icon="Cut24"
                                Width="38"
                                Padding="0"
-                               ToolTip="גזור (Ctrl+X)" />
+                               ToolTip="׳’׳–׳•׳¨ (Ctrl+X)" />
 
                     <ui:Button Command="{Binding CopyCmd}"
                                Icon="Copy24"
                                Width="38"
                                Padding="0"
-                               ToolTip="העתק (Ctrl+C)" />
+                               ToolTip="׳”׳¢׳×׳§ (Ctrl+C)" />
 
                     <ui:Button Command="{Binding PasteCmd}"
                                Icon="ClipboardPaste24"
                                Width="38"
                                Padding="0"
-                               ToolTip="הדבק (Ctrl+V)" />
+                               ToolTip="׳”׳“׳‘׳§ (Ctrl+V)" />
 
                     <ui:Button Command="{Binding RenameCmd}"
                                CommandParameter="{Binding CurrentFileSystemObject.Path}"
                                Icon="Rename24"
                                Width="38"
                                Padding="0"
-                               ToolTip="שינוי שם (F2)" />
+                               ToolTip="׳©׳™׳ ׳•׳™ ׳©׳ (F2)" />
 
                     <ui:Button Command="{Binding DeleteCmd}"
                                CommandParameter="{Binding CurrentFileSystemObject.Path}"
                                Icon="Delete24"
                                Width="38"
                                Padding="0"
-                               ToolTip="מחק (Delete)" />
+                               ToolTip="׳׳—׳§ (Delete)" />
 
                     <Separator />
 
                     <ui:Button Command="{Binding EjectDriveCmd}"
                                Icon="UsbPlug24"
-                               Content="הוצאה בטוחה"
-                               ToolTip="הוצאה בטוחה של כונן נשלף" />
+                               Content="׳”׳•׳¦׳׳” ׳‘׳˜׳•׳—׳”"
+                               ToolTip="׳”׳•׳¦׳׳” ׳‘׳˜׳•׳—׳” ׳©׳ ׳›׳•׳ ׳ ׳ ׳©׳׳£" />
 
                     <Separator />
 
                     <ui:Button Command="{Binding TogglePreviewPaneCmd}"
                                Icon="Eye24"
-                               Content="תצוגה מקדימה"
-                               ToolTip="הצג או הסתר חלונית תצוגה מקדימה (Alt+P)" />
+                               Content="׳×׳¦׳•׳’׳” ׳׳§׳“׳™׳׳”"
+                               ToolTip="׳”׳¦׳’ ׳׳• ׳”׳¡׳×׳¨ ׳—׳׳•׳ ׳™׳× ׳×׳¦׳•׳’׳” ׳׳§׳“׳™׳׳” (Alt+P)" />
                 </StackPanel>
 
                 <StackPanel Orientation="Horizontal" DockPanel.Dock="Left">
@@ -131,7 +132,11 @@
                                Width="38"
                                Padding="0"
                                ToolTip="רענן (F5)" />
-
+                    <ui:Button Command="{Binding OpenAdminCmd}"
+                               Icon="Settings24"
+                               Width="38"
+                               Padding="0"
+                               ToolTip="הגדרות מנהל מערכת (Ctrl+Shift+A)" />
                     <ui:Button Command="{Binding OpenAboutCmd}"
                                CommandParameter="{Binding TabPath}"
                                Icon="Info24"
@@ -159,7 +164,7 @@
                        Height="38"
                        Width="40"
                        Padding="0"
-                       ToolTip="בית (כל הכוננים)" />
+                       ToolTip="׳‘׳™׳× (׳›׳ ׳”׳›׳•׳ ׳ ׳™׳)" />
 
             <ui:Button Grid.Column="1"
                        Command="{Binding BackCmd}"
@@ -169,7 +174,7 @@
                        Height="38"
                        Width="40"
                        Padding="0"
-                       ToolTip="תיקיית אב (Backspace)" />
+                       ToolTip="׳×׳™׳§׳™׳™׳× ׳׳‘ (Backspace)" />
 
             <!-- Interactive Breadcrumbs & Address Bar -->
             <Grid Grid.Column="2" Margin="4,0">
@@ -209,7 +214,7 @@
                                                     FontSize="12"
                                                     FontWeight="SemiBold"
                                                     Cursor="Hand" />
-                                            <TextBlock Text="›"
+                                            <TextBlock Text="ג€÷"
                                                        VerticalAlignment="Center"
                                                        Margin="2,0"
                                                        Foreground="Gray"
@@ -229,7 +234,7 @@
                                    Padding="0"
                                    Background="Transparent"
                                    BorderBrush="Transparent"
-                                   ToolTip="ערוך נתיב כטקסט" />
+                                   ToolTip="׳¢׳¨׳•׳ ׳ ׳×׳™׳‘ ׳›׳˜׳§׳¡׳˜" />
                     </Grid>
                 </Border>
 
@@ -258,7 +263,7 @@
                                Height="38"
                                Padding="0"
                                Margin="4,0,0,0"
-                               ToolTip="סיום עריכת נתיב" />
+                               ToolTip="׳¡׳™׳•׳ ׳¢׳¨׳™׳›׳× ׳ ׳×׳™׳‘" />
                 </Grid>
             </Grid>
 
@@ -266,7 +271,7 @@
             <Grid Grid.Column="3" Margin="4,0,0,0" Width="220">
                 <ui:TextBox Text="{Binding SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                             Icon="Search24"
-                            PlaceholderText="חיפוש בתיקייה זו..."
+                            PlaceholderText="׳—׳™׳₪׳•׳© ׳‘׳×׳™׳§׳™׳™׳” ׳–׳•..."
                             FontSize="13"
                             Height="38"
                             Padding="8,0,32,0" />
@@ -280,7 +285,7 @@
                            Margin="4,0,0,0"
                            Background="Transparent"
                            BorderBrush="Transparent"
-                           ToolTip="נקה חיפוש"
+                           ToolTip="׳ ׳§׳” ׳—׳™׳₪׳•׳©"
                            Visibility="{Binding SearchText, Converter={StaticResource NonEmptyStringToVisibilityConverter}}" />
             </Grid>
         </Grid>
@@ -312,10 +317,10 @@
 
                 <ListView.ContextMenu>
                     <ContextMenu>
-                        <MenuItem Command="{Binding CreateDirectoryCmd}" Header="תיקייה חדשה (Ctrl+Shift+N)" />
-                        <MenuItem Command="{Binding PasteCmd}" Header="הדבק (Ctrl+V)" />
-                        <MenuItem Command="{Binding BackHome}" Header="חזרה לבית" />
-                        <MenuItem Command="{Binding EjectDriveCmd}" Header="הוצאה בטוחה של כונן" />
+                        <MenuItem Command="{Binding CreateDirectoryCmd}" Header="׳×׳™׳§׳™׳™׳” ׳—׳“׳©׳” (Ctrl+Shift+N)" />
+                        <MenuItem Command="{Binding PasteCmd}" Header="׳”׳“׳‘׳§ (Ctrl+V)" />
+                        <MenuItem Command="{Binding BackHome}" Header="׳—׳–׳¨׳” ׳׳‘׳™׳×" />
+                        <MenuItem Command="{Binding EjectDriveCmd}" Header="׳”׳•׳¦׳׳” ׳‘׳˜׳•׳—׳” ׳©׳ ׳›׳•׳ ׳" />
                     </ContextMenu>
                 </ListView.ContextMenu>
 
@@ -323,29 +328,29 @@
                     <ContextMenu x:Key="ItemContextMenu">
                         <MenuItem Command="{Binding DataContext.OpenCmd, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                   CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=ListView}, Path=SelectedItem.Path}"
-                                  Header="פתח" />
+                                  Header="׳₪׳×׳—" />
                         <Separator />
                         <MenuItem Command="{Binding DataContext.CutCmd, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                  Header="גזור (Ctrl+X)" />
+                                  Header="׳’׳–׳•׳¨ (Ctrl+X)" />
                         <MenuItem Command="{Binding DataContext.CopyCmd, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                  Header="העתק (Ctrl+C)" />
+                                  Header="׳”׳¢׳×׳§ (Ctrl+C)" />
                         <MenuItem Command="{Binding DataContext.PasteCmd, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                  Header="הדבק (Ctrl+V)" />
+                                  Header="׳”׳“׳‘׳§ (Ctrl+V)" />
                         <Separator />
                         <MenuItem Command="{Binding DataContext.RenameCmd, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                   CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=ListView}, Path=SelectedItem.Path}"
-                                  Header="שינוי שם (F2)" />
+                                  Header="׳©׳™׳ ׳•׳™ ׳©׳ (F2)" />
                         <MenuItem Command="{Binding DataContext.DeleteCmd, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                   CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=ListView}, Path=SelectedItem.Path}"
-                                  Header="מחק (Delete)" />
+                                  Header="׳׳—׳§ (Delete)" />
                         <MenuItem Command="{Binding DataContext.CreateDirectoryCmd, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                  Header="תיקייה חדשה (Ctrl+Shift+N)" />
+                                  Header="׳×׳™׳§׳™׳™׳” ׳—׳“׳©׳” (Ctrl+Shift+N)" />
                         <Separator />
                         <MenuItem Command="{Binding DataContext.EjectDriveCmd, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                  Header="הוצאה בטוחה של כונן" />
+                                  Header="׳”׳•׳¦׳׳” ׳‘׳˜׳•׳—׳” ׳©׳ ׳›׳•׳ ׳" />
                         <MenuItem Command="{Binding DataContext.CalculateFolderSizeCmd, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                   CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=ListView}, Path=SelectedItem}"
-                                  Header="חשב גודל תיקייה" />
+                                  Header="׳—׳©׳‘ ׳’׳•׳“׳ ׳×׳™׳§׳™׳™׳”" />
                     </ContextMenu>
                 </ListView.Resources>
 
@@ -392,7 +397,7 @@
                     <GridView>
                         <GridViewColumn Width="320">
                             <GridViewColumn.Header>
-                                <GridViewColumnHeader Tag="Name" Content="שם" />
+                                <GridViewColumnHeader Tag="Name" Content="׳©׳" />
                             </GridViewColumn.Header>
                             <GridViewColumn.CellTemplate>
                                 <DataTemplate>
@@ -406,7 +411,7 @@
 
                         <GridViewColumn Width="180">
                             <GridViewColumn.Header>
-                                <GridViewColumnHeader Tag="LastWriteTime" Content="תאריך שינוי" />
+                                <GridViewColumnHeader Tag="LastWriteTime" Content="׳×׳׳¨׳™׳ ׳©׳™׳ ׳•׳™" />
                             </GridViewColumn.Header>
                             <GridViewColumn.CellTemplate>
                                 <DataTemplate>
@@ -417,7 +422,7 @@
 
                         <GridViewColumn Width="130">
                             <GridViewColumn.Header>
-                                <GridViewColumnHeader Tag="Type" Content="סוג" />
+                                <GridViewColumnHeader Tag="Type" Content="׳¡׳•׳’" />
                             </GridViewColumn.Header>
                             <GridViewColumn.CellTemplate>
                                 <DataTemplate>
@@ -428,7 +433,7 @@
 
                         <GridViewColumn Width="130">
                             <GridViewColumn.Header>
-                                <GridViewColumnHeader Tag="Size" Content="גודל" />
+                                <GridViewColumnHeader Tag="Size" Content="׳’׳•׳“׳" />
                             </GridViewColumn.Header>
                             <GridViewColumn.CellTemplate>
                                 <DataTemplate>
@@ -508,7 +513,7 @@
 
                     <!-- Preview Header -->
                     <DockPanel Grid.Row="0" Margin="0,0,0,10">
-                        <TextBlock Text="תצוגה מקדימה"
+                        <TextBlock Text="׳×׳¦׳•׳’׳” ׳׳§׳“׳™׳׳”"
                                    FontWeight="Bold"
                                    FontSize="15"
                                    VerticalAlignment="Center"
@@ -521,7 +526,7 @@
                                    Background="Transparent"
                                    BorderBrush="Transparent"
                                    DockPanel.Dock="Left"
-                                   ToolTip="סגור תצוגה מקדימה" />
+                                   ToolTip="׳¡׳’׳•׳¨ ׳×׳¦׳•׳’׳” ׳׳§׳“׳™׳׳”" />
                     </DockPanel>
 
                     <!-- Preview Body -->
