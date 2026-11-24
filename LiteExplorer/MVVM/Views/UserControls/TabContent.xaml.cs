@@ -14,6 +14,7 @@ namespace LiteExplorer.MVVM.Views.UserControls;
 public partial class TabContent
 {
     private readonly ListBox[] lists;
+    private bool isSelectingMany;
 
     public TabContent()
     {
@@ -26,11 +27,20 @@ public partial class TabContent
             list.IsVisibleChanged += (_, _) => OnListVisibleChanged(list);
         }
 
+        Selection = new RectangleSelection(SelectionLayer, SelectionFrame, (list, busy) =>
+        {
+            isSelectingMany = busy;
+            if (!busy)
+                UpdateSelection(list);
+        });
+
         AddressInput.IsVisibleChanged += OnAddressInputVisibleChanged;
         PreviewMouseDown += OnPreviewMouseDown;
         PreviewKeyDown += OnPreviewKeyDown;
         DataContextChanged += OnDataContextChanged;
     }
+
+    internal RectangleSelection Selection { get; }
 
     private TabContentViewModel? ViewModel => DataContext as TabContentViewModel;
 
@@ -71,8 +81,10 @@ public partial class TabContent
     private void UpdateSelection(ListBox list)
     {
         // All lists follow the current item, but only the visible one holds the full selection.
-        if (list.IsVisible)
-            ViewModel?.SetSelectedItems(list.SelectedItems.OfType<FileSystemObject>());
+        if (!list.IsVisible || isSelectingMany) return;
+
+        ViewModel?.SetSelectedItems(list.SelectedItems.OfType<FileSystemObject>());
+        SelectAllBox.IsChecked = list.SelectedItems.Count == 0 ? false : list.SelectedItems.Count == list.Items.Count ? true : null;
     }
 
     private void OnAddressInputVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
@@ -148,16 +160,22 @@ public partial class TabContent
 
     private void List_PreviewMouseDown(object sender, MouseButtonEventArgs e)
     {
+        var list = (ListBox)sender;
         var item = FindItem(e.OriginalSource);
+        // These handle the mouse themselves.
+        if (FindParent<ScrollBar>(e.OriginalSource) != null || FindParent<GridViewColumnHeader>(e.OriginalSource) != null ||
+            FindParent<CheckBox>(e.OriginalSource) != null)
+            return;
+
+        // A rectangle starts anywhere except on the icon and name of an item.
+        if (e.ChangedButton == MouseButton.Left && (item == null || !IsOnName(e.OriginalSource, item)))
+            Selection.Press(list, e.GetPosition(list), Keyboard.Modifiers);
 
         if (item == null)
         {
-            // Empty space clears the selection, as long as it is not a scroll bar or a column header.
-            if (FindParent<ScrollBar>(e.OriginalSource) == null && FindParent<GridViewColumnHeader>(e.OriginalSource) == null)
-            {
-                ((ListBox)sender).UnselectAll();
-                ((ListBox)sender).Focus();
-            }
+            if (Keyboard.Modifiers == ModifierKeys.None)
+                list.UnselectAll();
+            list.Focus();
         }
         else if (e.ChangedButton == MouseButton.Middle && item.DataContext is FileSystemObject { IsDirectory: true } folder)
         {
@@ -166,9 +184,40 @@ public partial class TabContent
         }
     }
 
+    private void List_PreviewMouseMove(object sender, MouseEventArgs e)
+    {
+        if (e.LeftButton != MouseButtonState.Pressed)
+            Selection.Release();
+        else if (Selection.TryStart(e.GetPosition((ListBox)sender)))
+            e.Handled = true;
+    }
+
+    private void SelectAll_Click(object sender, RoutedEventArgs e)
+    {
+        if (SelectAllBox.IsChecked == true)
+            items.SelectAll();
+        else
+            items.UnselectAll();
+        items.Focus();
+    }
+
+    /// <summary>In the details view only the name column counts as the item itself.</summary>
+    private static bool IsOnName(object source, ListBoxItem item)
+    {
+        if (item is not ListViewItem)
+            return true;
+
+        for (var current = source as DependencyObject; current != null && current != item; current = VisualTreeHelper.GetParent(current))
+        {
+            if (current is FrameworkElement { Name: "NamePart" })
+                return true;
+        }
+        return false;
+    }
+
     private void List_MouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
-        if (e.ChangedButton == MouseButton.Left && FindItem(e.OriginalSource)?.DataContext is FileSystemObject target)
+        if (FindParent<CheckBox>(e.OriginalSource) == null && e.ChangedButton == MouseButton.Left && FindItem(e.OriginalSource)?.DataContext is FileSystemObject target)
             ViewModel?.Open(target.Path);
     }
 

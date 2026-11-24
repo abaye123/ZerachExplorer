@@ -197,6 +197,17 @@ public sealed class ServiceTests : IDisposable
     }
 
     [Fact]
+    public void ViewSettingsAreRememberedAndSurviveDamage()
+    {
+        Assert.True(new ViewSettings(temp.At("v.json")).ShowCheckBoxes);
+        new ViewSettings(temp.At("v.json")).ShowCheckBoxes = false;
+        Assert.False(new ViewSettings(temp.At("v.json")).ShowCheckBoxes);
+
+        temp.Write("v.json", "{ broken");
+        Assert.True(new ViewSettings(temp.At("v.json")).ShowCheckBoxes);
+    }
+
+    [Fact]
     public void UsbDialogIsOffByDefault() => Assert.False(new AppConfiguration().ShowUsbDialog);
 
     [Fact]

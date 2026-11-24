@@ -262,6 +262,7 @@
                             <MenuItem Header="סמלים גדולים" Icon="&#xF0E2;" IsChecked="{Binding IsTilesView, Mode=OneWay}" Command="{Binding SetViewCmd}" CommandParameter="Tiles" />
                             <MenuItem Header="פרטים" Icon="&#xEA37;" IsChecked="{Binding IsDetailsView, Mode=OneWay}" Command="{Binding SetViewCmd}" CommandParameter="Details" />
                             <Separator />
+                            <MenuItem Header="תיבות סימון לפריטים" Icon="&#xE739;" IsChecked="{Binding View.ShowCheckBoxes, Mode=OneWay}" Command="{Binding ToggleCheckBoxesCmd}" />
                             <MenuItem Header="חלונית תצוגה מקדימה" Icon="&#xE90D;" InputGestureText="Alt+P" IsChecked="{Binding IsPreviewPaneVisible, Mode=OneWay}" Command="{Binding TogglePreviewPaneCmd}" />
                         </ContextMenu>
                     </Button.ContextMenu>
@@ -344,6 +345,7 @@
                       TextSearch.TextPath="Name"
                       ContextMenu="{StaticResource BackgroundMenu}"
                       PreviewMouseDown="List_PreviewMouseDown"
+                      PreviewMouseMove="List_PreviewMouseMove"
                       PreviewMouseWheel="List_PreviewMouseWheel"
                       MouseDoubleClick="List_MouseDoubleClick"
                       PreviewKeyDown="List_PreviewKeyDown"
@@ -382,6 +384,7 @@
                       TextSearch.TextPath="Name"
                       ContextMenu="{StaticResource BackgroundMenu}"
                       PreviewMouseDown="List_PreviewMouseDown"
+                      PreviewMouseMove="List_PreviewMouseMove"
                       PreviewMouseWheel="List_PreviewMouseWheel"
                       MouseDoubleClick="List_MouseDoubleClick"
                       PreviewKeyDown="List_PreviewKeyDown"
@@ -395,13 +398,29 @@
                         <GridView ColumnHeaderContainerStyle="{StaticResource ColumnHeader}">
                         <GridViewColumn Width="400">
                             <GridViewColumn.Header>
-                                <GridViewColumnHeader Tag="Name" Content="שם" />
+                                <GridViewColumnHeader Tag="Name">
+                                    <StackPanel Orientation="Horizontal">
+                                        <CheckBox x:Name="SelectAllBox"
+                                                  Style="{StaticResource SelectBox}"
+                                                  Margin="0,0,8,0"
+                                                  ToolTip="בחר הכול"
+                                                  Click="SelectAll_Click"
+                                                  Visibility="{Binding DataContext.View.ShowCheckBoxes, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BoolToVisibility}}" />
+                                        <TextBlock Text="שם" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </GridViewColumnHeader>
                             </GridViewColumn.Header>
                             <GridViewColumn.CellTemplate>
                                 <DataTemplate>
-                                    <DockPanel ToolTip="{Binding Name}">
-                                        <Image Source="{Binding Image}" Width="16" Height="16" Margin="4,0,10,0" Style="{StaticResource SharpImage}" />
-                                        <TextBlock Text="{Binding Name}" Style="{StaticResource NameText}" />
+                                    <DockPanel>
+                                        <Border Width="26" Visibility="{Binding DataContext.View.ShowCheckBoxes, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BoolToVisibility}}">
+                                            <CheckBox Style="{StaticResource ItemSelectBox}" HorizontalAlignment="Left" Margin="1,0,0,0" IsChecked="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}, Mode=TwoWay}" />
+                                        </Border>
+                                        <!-- Only this part counts as the item itself when a rectangle is drawn -->
+                                        <DockPanel x:Name="NamePart" Background="Transparent" HorizontalAlignment="Left" ToolTip="{Binding Name}">
+                                            <Image Source="{Binding Image}" Width="16" Height="16" Margin="4,0,10,0" Style="{StaticResource SharpImage}" />
+                                            <TextBlock Text="{Binding Name}" Style="{StaticResource NameText}" />
+                                        </DockPanel>
                                     </DockPanel>
                                 </DataTemplate>
                             </GridViewColumn.CellTemplate>
@@ -466,6 +485,7 @@
                       TextSearch.TextPath="Name"
                       ContextMenu="{StaticResource BackgroundMenu}"
                       PreviewMouseDown="List_PreviewMouseDown"
+                      PreviewMouseMove="List_PreviewMouseMove"
                       PreviewMouseWheel="List_PreviewMouseWheel"
                       MouseDoubleClick="List_MouseDoubleClick"
                       PreviewKeyDown="List_PreviewKeyDown"
@@ -479,6 +499,14 @@
                     </ListBox.ItemsPanel>
                     <ListBox.ItemTemplate>
                         <DataTemplate>
+                            <Grid>
+                            <CheckBox Style="{StaticResource ItemSelectBox}"
+                                      HorizontalAlignment="Left"
+                                      VerticalAlignment="Top"
+                                      Margin="-1,-3,0,0"
+                                      Panel.ZIndex="1"
+                                      Tag="{Binding DataContext.View.ShowCheckBoxes, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                      IsChecked="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}, Mode=TwoWay}" />
                             <StackPanel>
                                 <Image Source="{Binding LargeImage}" Width="48" Height="48" Margin="0,2,0,8" HorizontalAlignment="Center" Style="{StaticResource SharpImage}" />
                                 <TextBlock Text="{Binding Name}"
@@ -490,9 +518,15 @@
                                            MaxHeight="56"
                                            FontSize="13" />
                             </StackPanel>
+                            </Grid>
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>
+
+                <!-- Receives the mouse while a selection rectangle is drawn -->
+                <Canvas x:Name="SelectionLayer" IsHitTestVisible="False" ClipToBounds="True">
+                    <Rectangle x:Name="SelectionFrame" Visibility="Collapsed" Fill="#330078D4" Stroke="#0078D4" StrokeThickness="1" />
+                </Canvas>
 
                 <TextBlock Text="{Binding EmptyText}"
                            HorizontalAlignment="Center"

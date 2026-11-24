@@ -76,6 +76,7 @@ internal sealed class TabContentViewModel : ViewModel, IExplorerTab, IDisposable
         TogglePreviewPaneCmd = new ActionCommand(_ => IsPreviewPaneVisible = !IsPreviewPaneVisible);
         ToggleViewModeCmd = new ActionCommand(_ => CurrentViewMode = IsDetailsView ? ViewMode.Tiles : ViewMode.Details);
         SetViewCmd = new ActionCommand(p => CurrentViewMode = Enum.Parse<ViewMode>((string)p!));
+        ToggleCheckBoxesCmd = new ActionCommand(_ => View.ShowCheckBoxes = !View.ShowCheckBoxes);
         SortCmd = new ActionCommand(p => SortByColumn((string)p!));
         OpenInNewTabCmd = new ActionCommand(p => OpenInNewTab(p as string ?? CurrentFileSystemObject?.Path));
         OpenAboutCmd = new ActionCommand(_ => dialogs.ShowAbout());
@@ -98,6 +99,7 @@ internal sealed class TabContentViewModel : ViewModel, IExplorerTab, IDisposable
     public ICommand UpCmd { get; }
     public ICommand SetViewCmd { get; }
     public ICommand SortCmd { get; }
+    public ICommand ToggleCheckBoxesCmd { get; }
     public ICommand OpenInNewTabCmd { get; }
     public ICommand BackHome { get; }
     public ICommand NavigateBreadcrumbCmd { get; }
@@ -126,6 +128,7 @@ internal sealed class TabContentViewModel : ViewModel, IExplorerTab, IDisposable
     public ObservableCollection<FileSystemObject> SidebarDrives => sidebar.Drives;
     public FilePreviewInfo PreviewInfo => preview.Info;
     public OperationsViewModel Operations => services.Operations;
+    public ViewSettings View => services.View;
     public IReadOnlyList<FileSystemObject> SelectedFileSystemObjects => selectedItems;
 
     /// <summary>Raised to open a folder in another tab, without leaving this one.</summary>

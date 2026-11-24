@@ -1,5 +1,6 @@
 using LiteExplorer.MVVM.Models;
 using LiteExplorer.MVVM.ViewModels;
+using LiteExplorer.MVVM.Views.UserControls;
 using LiteExplorer.MVVM.Views.Windows;
 using LiteExplorer.Services;
 using System.Diagnostics;
@@ -58,7 +59,7 @@ public class MainWindowTests
         var dialogs = new FakeDialogs();
         var services = new ExplorerServices(policy, new FakeDialogs(), new FakeClipboard(), new DirectoryLoader(policy),
             new FileTransferService(policy, audit), new FileDeletionService(policy, audit), new FileRenameService(policy, audit), new FolderCreationService(policy, audit),
-            new DriveEjectService(policy), audit, new DeviceNotificationService(), new SessionService(audit, () => { }, temp.At("none")), operations);
+            new DriveEjectService(policy), audit, new DeviceNotificationService(), new SessionService(audit, () => { }, temp.At("none")), operations, new ViewSettings(temp.At(@"sub\view.json")));
         var configuration = new ConfigurationService(temp.At(@"sub\config.json"));
         var main = new MainWindowViewModel(() => new TabContentViewModel(services));
         var window = new MainWindow(configuration, policy, operations, dialogs) { DataContext = main, Left = -5000, ShowInTaskbar = false, ShowActivated = false };
@@ -82,6 +83,23 @@ public class MainWindowTests
         var scroll = Find<ScrollViewer>(list).First();
         double offset = scroll.VerticalOffset;
         Assert.True(offset > 0);
+
+        Save(window, "checked");
+        var selectAll = Find<CheckBox>(list).Single(c => c.ToolTip as string == "בחר הכול");
+        Assert.Null(selectAll.IsChecked);
+        tab.View.ShowCheckBoxes = false;
+        await Task.Delay(100);
+        Assert.All(Find<CheckBox>(list), box => Assert.False(box.IsVisible));
+        tab.View.ShowCheckBoxes = true;
+        await Task.Delay(100);
+        TestRectangle(window, list, tab);
+        await Task.Delay(300);
+        Save(window, "rectangle");
+        EndRectangle(window);
+        scroll.ScrollToVerticalOffset(offset);
+        list.UnselectAll();
+        foreach (int index in new[] { 150, 152 })
+            list.SelectedItems.Add(list.Items[index]);
 
         temp.Write("file199.txt", "changed content");
         tab.Reload();
@@ -113,6 +131,18 @@ public class MainWindowTests
         tiles.ScrollIntoView(tiles.Items[0]);
         await Task.Delay(150);
         Save(window, "tilestop");
+        var selection = SelectionOf(window);
+        selection.Press(tiles, new Point(0, 0), System.Windows.Input.ModifierKeys.Control);
+        Assert.True(selection.Begin());
+        selection.Update(new Point(200, 200));
+        Assert.Contains(tiles.Items[0], tiles.SelectedItems.Cast<object>());
+        Assert.Contains(tiles.Items.Cast<FileSystemObject>().Single(i => i.Name == "file146.txt"), tiles.SelectedItems.Cast<object>());
+        await Task.Delay(300);
+        Save(window, "tilesrectangle");
+        selection.End();
+        tiles.SelectedItems.Clear();
+        tiles.SelectedItem = tiles.Items.Cast<FileSystemObject>().Single(i => i.Name == "file146.txt");
+
         // Every line of a name fits inside its tile.
         Assert.All(Find<ListBoxItem>(tiles), item => Assert.All(Find<TextBlock>(item), text =>
             Assert.True(text.TranslatePoint(new Point(0, text.ActualHeight), item).Y <= item.ActualHeight)));
@@ -197,6 +227,43 @@ public class MainWindowTests
             foreach (var nested in Find<T>(child))
                 yield return nested;
         }
+    }
+
+    private static RectangleSelection SelectionOf(Window window) => Find<TabContent>(window).Single().Selection;
+
+    private static void EndRectangle(Window window) => SelectionOf(window).End();
+
+    private static void TestRectangle(Window window, ListView list, TabContentViewModel tab)
+    {
+        var selection = SelectionOf(window);
+        var panel = Find<System.Windows.Controls.VirtualizingStackPanel>(list).Single();
+        var scroll = Find<ScrollViewer>(list).First();
+        // Where rows really are, independent of how the selection computes it.
+        double RowY(int row)
+        {
+            var container = (FrameworkElement)list.ItemContainerGenerator.ContainerFromIndex(row);
+            return container.TranslatePoint(new Point(0, container.ActualHeight / 2), list).Y;
+        }
+        int first = Enumerable.Range(0, list.Items.Count).First(row => list.ItemContainerGenerator.ContainerFromIndex(row) is FrameworkElement && RowY(row) > 40);
+
+        selection.Press(list, new Point(60, RowY(first + 2)), System.Windows.Input.ModifierKeys.None);
+        Assert.False(selection.TryStart(new Point(61, RowY(first + 2))));
+        Assert.True(selection.Begin());
+        selection.Update(new Point(500, RowY(first + 6)));
+        Assert.Equal(Enumerable.Range(first + 2, 5).Select(i => list.Items[i]), list.SelectedItems.Cast<object>().OrderBy(list.Items.IndexOf));
+        Assert.Equal(5, tab.SelectedFileSystemObjects.Count);
+
+        // Dragging back releases items again, and rows that scrolled out of view stay selected.
+        selection.Update(new Point(500, RowY(first + 4)));
+        Assert.Equal(3, list.SelectedItems.Count);
+        double start = scroll.VerticalOffset;
+        scroll.ScrollToVerticalOffset(start * (first - 95) / first);
+        scroll.UpdateLayout();
+        selection.Update(new Point(500, RowY(first - 90)));
+        Assert.Equal(93, list.SelectedItems.Count);
+        scroll.ScrollToVerticalOffset(start);
+        scroll.UpdateLayout();
+        selection.Update(new Point(500, RowY(first + 8)));
     }
 
     private static bool WorkUntilCancelled(OperationProgress progress)

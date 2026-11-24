@@ -80,6 +80,7 @@ public partial class App
         services.AddSingleton<IFileRenameService, FileRenameService>();
         services.AddSingleton<IFolderCreationService, FolderCreationService>();
         services.AddSingleton<OperationsViewModel>();
+        services.AddSingleton<ViewSettings>(_ => new ViewSettings());
         services.AddSingleton<IDriveEjectService, DriveEjectService>();
         services.AddSingleton<IClipboardService, ClipboardService>();
         services.AddSingleton<IDialogService, DialogService>();

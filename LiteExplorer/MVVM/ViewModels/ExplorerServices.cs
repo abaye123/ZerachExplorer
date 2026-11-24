@@ -16,4 +16,5 @@ internal sealed record ExplorerServices(
     IAuditService Audit,
     IDeviceNotificationService Devices,
     ISessionService Session,
-    OperationsViewModel Operations);
+    OperationsViewModel Operations,
+    ViewSettings View);
