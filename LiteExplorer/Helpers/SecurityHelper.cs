@@ -14,8 +14,7 @@ public static class SecurityHelper
         if (password == null) password = string.Empty;
 
         byte[] saltBytes = RandomNumberGenerator.GetBytes(SaltByteSize);
-        using var pbkdf2 = new Rfc2898DeriveBytes(password, saltBytes, Iterations, HashAlgorithmName.SHA256);
-        byte[] hashBytes = pbkdf2.GetBytes(HashByteSize);
+        byte[] hashBytes = Rfc2898DeriveBytes.Pbkdf2(password, saltBytes, Iterations, HashAlgorithmName.SHA256, HashByteSize);
 
         salt = Convert.ToBase64String(saltBytes);
         hash = Convert.ToBase64String(hashBytes);
@@ -33,8 +32,7 @@ public static class SecurityHelper
             byte[] saltBytes = Convert.FromBase64String(storedSalt);
             byte[] expectedHashBytes = Convert.FromBase64String(storedHash);
 
-            using var pbkdf2 = new Rfc2898DeriveBytes(password, saltBytes, Iterations, HashAlgorithmName.SHA256);
-            byte[] actualHashBytes = pbkdf2.GetBytes(expectedHashBytes.Length);
+            byte[] actualHashBytes = Rfc2898DeriveBytes.Pbkdf2(password, saltBytes, Iterations, HashAlgorithmName.SHA256, expectedHashBytes.Length);
 
             return CryptographicOperations.FixedTimeEquals(actualHashBytes, expectedHashBytes);
         }

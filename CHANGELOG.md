@@ -1,6 +1,31 @@
-﻿# Changelog
+# Changelog
 
 All notable changes to ZerachExplorer will be documented in this file.
+
+## [2.0.0] - First release since 1.4.0
+
+Versions 1.5.0 to 1.7.0 below were development stages by [Amlaach](https://github.com/Amlaach) and were not released separately. Where they differ from this section, this section describes the released behavior.
+
+### Changed
+- Runs on .NET 10. The executable is `ZerachExplorer.exe`, as in 1.4.0; the installer upgrades 1.4.0 in place.
+- All drives except the system drive and Otzar HaHochma drives are available, and the administrator can block more.
+- There is no default administrator password. It is set on first use; saving settings requires Windows administrator approval. Passwords use 600,000 PBKDF2 iterations and repeated failures cause a delay.
+- A damaged or untrusted configuration file denies access instead of falling back to defaults.
+- Items on drives without a recycle bin are deleted permanently after an explicit warning.
+- The audit log is stored per user under `%LocalAppData%\ZerachExplorer\logs` and is limited by age and by size.
+- Kiosk mode and the USB dialog are off by default and are controlled in the administration window.
+- Copy and paste use the Windows clipboard, also with Windows Explorer.
+
+### Fixed
+- Transfers never replace files silently, and an interrupted copy leaves the destination intact.
+- A drive that is in use is not dismounted when ejecting.
+- Typing in the address bar does not change the current folder; refresh keeps the selection and scroll position.
+- The preview shows the latest selection and reads Windows-1255 text.
+- All file operations, including rename, are recorded in the audit log.
+
+### Removed
+- The Otzaria history reset command.
+- The manual session reset button, postponed to a later version.
 
 ## [1.7.0] - Stage 7: Kiosk Lockdown, Session Privacy, Audit Logging & Grid/Tile Views
 

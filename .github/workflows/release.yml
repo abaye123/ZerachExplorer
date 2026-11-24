@@ -1,29 +1,73 @@
-name: Release ZerachExplorer
+name: Release
+
+# Publishes a release when the version in Directory.Build.props changes on main.
+# The "release" environment holds the signing certificate and requires approval.
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - main
+    paths:
+      - Directory.Build.props
   workflow_dispatch:
-    inputs:
-      tag:
-        description: 'Release version tag (e.g. v1.7.0)'
-        required: false
-        default: ''
-  workflow_call:
-    inputs:
-      tag:
-        description: 'Release version tag (e.g. v1.7.0)'
-        required: true
-        type: string
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
-  release:
-    name: Build, Verify & Publish Release
+  check:
+    name: Check version and tests
     runs-on: windows-latest
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      exists: ${{ steps.version.outputs.exists }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Read version
+        id: version
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [xml]$props = Get-Content Directory.Build.props
+          $tag = "v$("$($props.Project.PropertyGroup.Version)".Trim())"
+          $found = git ls-remote --tags origin "refs/tags/$tag"
+          if ($LASTEXITCODE -ne 0) { throw "Could not list tags." }
+          if (-not (Test-Path "release-notes/$tag.md")) { throw "release-notes/$tag.md is missing." }
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          "exists=$([bool]$found)".ToLowerInvariant() >> $env:GITHUB_OUTPUT
+
+      - name: Setup .NET SDK
+        if: steps.version.outputs.exists == 'false'
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Build and test
+        if: steps.version.outputs.exists == 'false'
+        shell: pwsh
+        run: |
+          dotnet build LiteExplorer.sln --configuration Release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet test LiteExplorer.sln --configuration Release --no-build
+
+  release:
+    name: Build, sign & publish
+    needs: check
+    if: needs.check.outputs.exists == 'false'
+    runs-on: windows-latest
+    environment: release
+    permissions:
+      contents: write
+
+    env:
+      THUMBPRINT: EBAE118B2C6434273890DE749EC457C34FE1A882
 
     steps:
       - name: Checkout code
@@ -32,60 +76,43 @@ jobs:
       - name: Setup .NET SDK
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0.x'
+          global-json-file: global.json
 
-      - name: Restore and build solution (Release)
-        run: |
-          dotnet restore LiteExplorer.sln
-          dotnet build LiteExplorer.sln --configuration Release --no-restore
-
-      - name: Run automated test suite
-        run: dotnet test LiteExplorer.sln --configuration Release --no-build
-
-      - name: Publish Single-File Executable
-        run: >
-          dotnet publish LiteExplorer/LiteExplorer.csproj
-          --configuration Release
-          --runtime win-x64
-          --self-contained true
-          -p:PublishSingleFile=true
-          -p:IncludeNativeLibrariesForSelfExtract=true
-          -p:EnableCompressionInSingleFile=true
-          -o ./release-dist
-
-      - name: Package ZIP and SHA-256 checksums
+      - name: Install Inno Setup if missing
         shell: pwsh
         run: |
-          Compress-Archive -Path "./release-dist/LiteExplorer.exe" -DestinationPath "./release-dist/ZerachExplorer-win-x64.zip" -Force
-          $exeHash = (Get-FileHash "./release-dist/LiteExplorer.exe" -Algorithm SHA256).Hash
-          $zipHash = (Get-FileHash "./release-dist/ZerachExplorer-win-x64.zip" -Algorithm SHA256).Hash
-          @(
-            "$exeHash  LiteExplorer.exe",
-            "$zipHash  ZerachExplorer-win-x64.zip"
-          ) | Out-File -FilePath "./release-dist/checksums.sha256" -Encoding ascii
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup --yes --no-progress }
 
-      - name: Resolve release tag
-        id: meta
+      - name: Import signing certificate
         shell: pwsh
+        env:
+          PFX_BASE64: ${{ secrets.SIGNING_PFX_BASE64 }}
+          PFX_PASSWORD: ${{ secrets.SIGNING_PFX_PASSWORD }}
         run: |
-          $tag = "${{ inputs.tag }}"
-          if ([string]::IsNullOrWhiteSpace($tag) -and "${{ github.ref }}".StartsWith("refs/tags/v")) {
-            $tag = "${{ github.ref_name }}"
+          $file = Join-Path $env:RUNNER_TEMP "signing.pfx"
+          try {
+            [IO.File]::WriteAllBytes($file, [Convert]::FromBase64String($env:PFX_BASE64))
+            $password = ConvertTo-SecureString $env:PFX_PASSWORD -AsPlainText -Force
+            Import-PfxCertificate $file -CertStoreLocation Cert:\CurrentUser\My -Password $password | Out-Null
+          } finally {
+            Remove-Item $file -Force -ErrorAction SilentlyContinue
           }
-          if ([string]::IsNullOrWhiteSpace($tag)) {
-            [xml]$props = Get-Content "Directory.Build.props"
-            $ver = $props.Project.PropertyGroup.Version.Trim()
-            $tag = "v$ver"
-          }
-          Write-Output "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          if (-not (Test-Path "Cert:\CurrentUser\My\$env:THUMBPRINT")) { throw "The imported certificate is not the expected one." }
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.meta.outputs.tag }}
-          name: ZerachExplorer ${{ steps.meta.outputs.tag }}
-          generate_release_notes: true
-          files: |
-            ./release-dist/LiteExplorer.exe
-            ./release-dist/ZerachExplorer-win-x64.zip
-            ./release-dist/checksums.sha256
+      - name: Build and sign packages
+        shell: pwsh
+        run: ./scripts/build-release.ps1 -Thumbprint $env:THUMBPRINT
+
+      - name: Remove signing certificate
+        if: always()
+        shell: pwsh
+        run: Remove-Item "Cert:\CurrentUser\My\$env:THUMBPRINT" -DeleteKey -Force -ErrorAction SilentlyContinue
+
+      - name: Publish release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.check.outputs.tag }}
+        run: |
+          $files = (Get-ChildItem dist -File).FullName
+          gh release create $env:TAG $files --target $env:GITHUB_SHA --title "ZerachExplorer $env:TAG" --notes-file "release-notes/$env:TAG.md"

@@ -1,14 +1,16 @@
-name: Build, Test & Release
+name: Build and Test
 
 on:
   push:
     branches:
       - main
-      - '[0-9]+'
   pull_request:
     branches:
       - main
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -16,7 +18,7 @@ concurrency:
 
 jobs:
   build-and-test:
-    name: Build, Test & Package Single-File
+    name: Build, Test & Package
     runs-on: windows-latest
 
     steps:
@@ -26,48 +28,26 @@ jobs:
       - name: Setup .NET SDK
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0.x'
+          global-json-file: global.json
 
-      - name: Restore dependencies
-        run: dotnet restore LiteExplorer.sln
+      - name: Build
+        run: dotnet build LiteExplorer.sln --configuration Release
 
-      - name: Build solution (Release)
-        run: dotnet build LiteExplorer.sln --configuration Release --no-restore
-
-      - name: Run automated test suite
+      - name: Test
         run: dotnet test LiteExplorer.sln --configuration Release --no-build
 
-      - name: Publish Self-Contained Single-File Executable
-        run: >
-          dotnet publish LiteExplorer/LiteExplorer.csproj
-          --configuration Release
-          --runtime win-x64
-          --self-contained true
-          -p:PublishSingleFile=true
-          -p:IncludeNativeLibrariesForSelfExtract=true
-          -p:EnableCompressionInSingleFile=true
-          -o ./publish-standalone
-
-      - name: Verify executable and generate SHA-256 checksum
+      - name: Install Inno Setup if missing
         shell: pwsh
         run: |
-          $exePath = "./publish-standalone/LiteExplorer.exe"
-          if (-not (Test-Path $exePath)) {
-            Write-Error "Published executable not found at $exePath"
-            exit 1
-          }
-          $hash = (Get-FileHash -Path $exePath -Algorithm SHA256).Hash
-          "$hash  LiteExplorer.exe" | Out-File -FilePath "./publish-standalone/LiteExplorer.exe.sha256" -Encoding ascii
-          $sizeMB = [math]::Round((Get-Item $exePath).Length / 1MB, 2)
-          "### Standalone Artifact" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
-          "- **File:** ``LiteExplorer.exe`` ($sizeMB MB)" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
-          "- **SHA-256:** ``$hash``" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup --yes --no-progress }
 
-      - name: Upload Single-File Standalone Artifact
+      - name: Package (unsigned)
+        shell: pwsh
+        run: ./scripts/build-release.ps1
+
+      - name: Upload unsigned packages
         uses: actions/upload-artifact@v4
         with:
-          name: ZerachExplorer-Standalone-win-x64
-          path: |
-            ./publish-standalone/LiteExplorer.exe
-            ./publish-standalone/LiteExplorer.exe.sha256
+          name: ZerachExplorer-unsigned
+          path: dist/*
           if-no-files-found: error

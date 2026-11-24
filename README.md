@@ -8,7 +8,16 @@
 * אין גישה לכוננים של תוכנת "אוצר החוכמה".  
 * פתיחת והעתקת קבצים מהסוגים המאושרים בלבד.  
 * סיומות הקבצים המאושרות הם: `doc`, `docx`, `xls`, `xlsx`, `pdf`, `txt`, `csv`, `one`, `onetoc2`  (וורד, אקסל, וואן נוט).  
-* מחיקה ושינוי שם לקבצים (ללא שינוי סיומת הקובץ).
+* העתקה, גזירה, הדבקה, מחיקה, תיקייה חדשה ושינוי שם (ללא שינוי סיומת הקובץ).
+* עיצוב בסגנון Windows 11, לשוניות, תצוגת אריחים, חיפוש, מיון ותצוגה מקדימה.
+* הוצאה בטוחה של כונן USB.
+* פרופילי עמדה, הרשאות, חסימת כוננים, מצב קיוסק ויומן פעולות.
+
+## התקנה:
+
+* `ZerachExplorer_setup_x.y.z.exe` - מתקין, מומלץ לעמדות ציבוריות. משדרג גם גרסאות קודמות.
+* `ZerachExplorer_portable_x.y.z.exe` - קובץ אחד ללא התקנה.
+* דרוש Windows 10 ומעלה (64 סיביות). אין צורך להתקין .NET.
 
 ## הגדרות מנהל וסיסמה:
 
@@ -20,15 +29,13 @@
 התוכנה הזו קיימת בזכות הפרויקט הנהדר הזה:  
 https://github.com/tempous/LiteExplorer
 
+רוב החידושים בגרסה 2.0.0 פותחו על ידי [המלאך (Amlaach)](https://github.com/Amlaach).
+
 ## רישיון:
 
 קוד המקור של התוכנה זמין בכתובת:  
 https://github.com/abaye123/ZerachExplorer  
 תחת רישיון BSD 3-Clause License.
-
-## בהמשך:
-
-בעתיד בעז"ה יתווסף ~~שינוי שם לקובץ~~ והסרת כונן באופן בטוח.
 
 ---
 
@@ -42,7 +49,16 @@ ZerachExplorer is a modern and secure file explorer designed for public computer
 * No access to the "Otzar HaHochma" software drives.  
 * Opening and copying files only of approved types.  
 * Approved file extensions: `doc`, `docx`, `xls`, `xlsx`, `pdf`, `txt`, `csv`, `one`, `onetoc2` (Word, Excel, OneNote).  
-* Deleting and renaming files (without changing the file extension).
+* Copy, cut, paste, delete, new folder and rename (without changing the file extension).
+* Windows 11 style interface with tabs, tiles, search, sorting and quick preview.
+* Safe USB eject.
+* Station profiles, permissions, drive blocking, kiosk mode and an audit log.
+
+## Installation:
+
+* `ZerachExplorer_setup_x.y.z.exe` - installer, recommended for public stations. Also upgrades earlier versions.
+* `ZerachExplorer_portable_x.y.z.exe` - a single file that needs no installation.
+* Requires 64-bit Windows 10 or later. .NET does not need to be installed.
 
 ## Admin Settings & Password:
 
@@ -54,12 +70,14 @@ ZerachExplorer is a modern and secure file explorer designed for public computer
 This software exists thanks to this fantastic project:  
 https://github.com/tempous/LiteExplorer
 
+Most of version 2.0.0 was developed by [Amlaach](https://github.com/Amlaach).
+
 ## License:
 
 The source code is available at:  
 https://github.com/abaye123/ZerachExplorer  
 under the BSD 3-Clause License.
 
-## Future Plans:
+## Building:
 
-In the future, with God's help, features like ~~renaming files~~ and safe drive removal will be added.
+`dotnet test LiteExplorer.sln` runs the tests. `scripts/build-release.ps1` builds both packages into `dist` and needs Inno Setup 6. A release is published by changing the version in `Directory.Build.props` on `main`, with notes in `release-notes`.
