@@ -38,6 +38,7 @@ internal class FileSystemObjectComparer : IComparer
 
         int result = column switch
         {
+            SortColumn.Name when itemA.IsDrive && itemB.IsDrive => string.Compare(itemA.Path, itemB.Path, StringComparison.OrdinalIgnoreCase),
             SortColumn.Name => string.Compare(itemA.Name, itemB.Name, StringComparison.CurrentCultureIgnoreCase),
             SortColumn.LastWriteTime => CompareDates(itemA, itemB),
             SortColumn.Type => string.Compare(itemA.Type ?? string.Empty, itemB.Type ?? string.Empty, StringComparison.CurrentCultureIgnoreCase),

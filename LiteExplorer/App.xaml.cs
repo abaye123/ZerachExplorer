@@ -55,13 +55,16 @@ public partial class App
         CrashLogger.LogException(e.Exception, "DispatcherUnhandledException");
         e.Handled = true;
 
-        MessageBox.Show(
-            $"אירעה שגיאה בלתי צפויה במערכת:\n{e.Exception.Message}\n\nפרטי השגיאה נרשמו לקובץ יומן:\n{CrashLogger.LogFilePath}",
-            "שגיאת מערכת", MessageBoxButton.OK, MessageBoxImage.Error, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
+        string message = $"אירעה שגיאה בלתי צפויה במערכת:\n{e.Exception.Message}\n\nפרטי השגיאה נרשמו לקובץ יומן:\n{CrashLogger.LogFilePath}";
+        if (hasStarted)
+        {
+            MessageDialog.Show(MainWindow, message, "שגיאת מערכת", MessageKind.Error);
+            return;
+        }
 
-        // Without a main window there is nothing to continue with, only an invisible process.
-        if (!hasStarted)
-            Shutdown(StartupFailureExitCode);
+        // Nothing of the application can be relied on yet, and without a main window only an invisible process would remain.
+        MessageBox.Show(message, "שגיאת מערכת", MessageBoxButton.OK, MessageBoxImage.Error, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
+        Shutdown(StartupFailureExitCode);
     }
 
     internal static void ConfigureServices(IServiceCollection services)

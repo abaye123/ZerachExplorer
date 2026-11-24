@@ -274,6 +274,54 @@ public sealed class TabTests : IDisposable
         return Task.CompletedTask;
     });
 
+    [Fact]
+    public void BackAndForwardFollowHistory() => Ui.Run(async () =>
+    {
+        temp.Write(@"a\x.txt", "x");
+        temp.Write(@"b\x.txt", "x");
+        using var tab = await OpenRoot();
+        tab.Open(temp.At("a"));
+        tab.Open(temp.At("b"));
+
+        tab.BackCmd.Execute(null);
+        tab.BackCmd.Execute(null);
+        Assert.Equal(temp.Root, tab.TabPath);
+        tab.ForwardCmd.Execute(null);
+        Assert.Equal(temp.At("a"), tab.TabPath);
+        tab.UpCmd.Execute(null);
+        Assert.Equal(temp.Root, tab.TabPath);
+        Assert.False(tab.ForwardCmd.CanExecute(null));
+        tab.BackCmd.Execute(null);
+        Assert.Equal(temp.At("a"), tab.TabPath);
+        await Ui.Until(() => !tab.IsLoading);
+    });
+
+    [Fact]
+    public void TabsCloseCycleAndOpenInBackground() => Ui.Run(async () =>
+    {
+        temp.Write(@"a\x.txt", "x");
+        var main = new MainWindowViewModel(Create);
+        var first = main.CurrentTab!;
+
+        first.OpenInNewTabCmd.Execute(temp.At("a"));
+        Assert.Same(first, main.CurrentTab);
+        Assert.Equal(temp.At("a"), main.Tabs[1].TabPath);
+
+        main.AddTabCmd.Execute(null);
+        Assert.Same(main.Tabs[2], main.CurrentTab);
+        main.CycleTab(1);
+        Assert.Same(first, main.CurrentTab);
+        main.CycleTab(-1);
+        Assert.Same(main.Tabs[2], main.CurrentTab);
+        main.CloseTabCmd.Execute(main.Tabs[1]);
+        Assert.Equal(2, main.Tabs.Count);
+        Assert.Same(main.Tabs[1], main.CurrentTab);
+        main.CloseOtherTabsCmd.Execute(first);
+        Assert.Same(first, Assert.Single(main.Tabs));
+        await Ui.Until(() => !first.IsLoading);
+        first.Dispose();
+    });
+
     private sealed class FailingLoader : IDirectoryLoader
     {
         public async IAsyncEnumerable<DirectoryBatch> LoadAsync(string? path, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken token)

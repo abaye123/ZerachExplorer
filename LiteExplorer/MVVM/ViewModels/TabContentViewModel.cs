@@ -1,5 +1,7 @@
 using LiteExplorer.Helpers;
+using LiteExplorer.Helpers.WinAPI;
 using LiteExplorer.Infrastructure.Commands;
+using LiteExplorer.Infrastructure.Converters;
 using LiteExplorer.MVVM.Models;
 using LiteExplorer.MVVM.ViewModels.Base;
 using LiteExplorer.Services;
@@ -9,6 +11,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Windows.Data;
 using System.Windows.Input;
+using System.Windows.Media;
 using System.Windows.Threading;
 
 namespace LiteExplorer.MVVM.ViewModels;
@@ -27,12 +30,15 @@ internal sealed class TabContentViewModel : ViewModel, IExplorerTab, IDisposable
     // Kept so that WPF does not discard the sort and filter while the tab is hidden.
     private readonly ListCollectionView itemsView;
     private readonly List<FileSystemObject> selectedItems = new();
+    private readonly Stack<string?> backHistory = new();
+    private readonly Stack<string?> forwardHistory = new();
 
     private CancellationTokenSource scan = new();
     private string? loadedPath;
     private bool hasLoaded;
     private bool disposed;
 
+    private ImageSource? tabIcon;
     private string? tabTitle;
     private string? tabPath;
     private string addressText = string.Empty;
@@ -57,7 +63,9 @@ internal sealed class TabContentViewModel : ViewModel, IExplorerTab, IDisposable
         itemsView = (ListCollectionView)CollectionViewSource.GetDefaultView(FileSystemObjects);
 
         OpenCmd = new ActionCommand(p => Open(p?.ToString()));
-        BackCmd = new ActionCommand(_ => GoUp(), _ => TabPath != null);
+        BackCmd = new ActionCommand(_ => GoInHistory(backHistory, forwardHistory), _ => backHistory.Count > 0);
+        ForwardCmd = new ActionCommand(_ => GoInHistory(forwardHistory, backHistory), _ => forwardHistory.Count > 0);
+        UpCmd = new ActionCommand(_ => GoUp(), _ => TabPath != null);
         BackHome = new ActionCommand(_ => GoHome());
         NavigateBreadcrumbCmd = new ActionCommand(p => Open(p as string));
         RefreshCmd = new ActionCommand(_ => Reload());
@@ -67,6 +75,9 @@ internal sealed class TabContentViewModel : ViewModel, IExplorerTab, IDisposable
         ClearSearchCmd = new ActionCommand(_ => SearchText = string.Empty);
         TogglePreviewPaneCmd = new ActionCommand(_ => IsPreviewPaneVisible = !IsPreviewPaneVisible);
         ToggleViewModeCmd = new ActionCommand(_ => CurrentViewMode = IsDetailsView ? ViewMode.Tiles : ViewMode.Details);
+        SetViewCmd = new ActionCommand(p => CurrentViewMode = Enum.Parse<ViewMode>((string)p!));
+        SortCmd = new ActionCommand(p => SortByColumn((string)p!));
+        OpenInNewTabCmd = new ActionCommand(p => OpenInNewTab(p as string ?? CurrentFileSystemObject?.Path));
         OpenAboutCmd = new ActionCommand(_ => dialogs.ShowAbout());
         OpenAdminCmd = new ActionCommand(_ => OpenAdmin());
 
@@ -75,12 +86,19 @@ internal sealed class TabContentViewModel : ViewModel, IExplorerTab, IDisposable
         services.Devices.DriveReleaseFinished += OnDriveReleaseFinished;
         services.Session.SessionReset += OnSessionReset;
 
+        FileSystemObjects.CollectionChanged += (_, _) => NotifyItemsChanged();
+
         ApplySorting();
         UpdateBreadcrumbs();
     }
 
     public ICommand OpenCmd { get; }
     public ICommand BackCmd { get; }
+    public ICommand ForwardCmd { get; }
+    public ICommand UpCmd { get; }
+    public ICommand SetViewCmd { get; }
+    public ICommand SortCmd { get; }
+    public ICommand OpenInNewTabCmd { get; }
     public ICommand BackHome { get; }
     public ICommand NavigateBreadcrumbCmd { get; }
     public ICommand RefreshCmd { get; }
@@ -109,13 +127,20 @@ internal sealed class TabContentViewModel : ViewModel, IExplorerTab, IDisposable
     public FilePreviewInfo PreviewInfo => preview.Info;
     public IReadOnlyList<FileSystemObject> SelectedFileSystemObjects => selectedItems;
 
+    /// <summary>Raised to open a folder in another tab, without leaving this one.</summary>
+    public event Action<string>? NewTabRequested;
+
     public SortColumn CurrentSortColumn { get; private set; } = SortColumn.Name;
     public ListSortDirection CurrentSortDirection { get; private set; } = ListSortDirection.Ascending;
 
     public string? TabTitle
     {
         get => tabTitle;
-        private set => SetValue(ref tabTitle, value);
+        private set
+        {
+            if (SetValue(ref tabTitle, value))
+                OnPropertyChanged(nameof(SearchHint));
+        }
     }
 
     public string? TabPath
@@ -126,6 +151,7 @@ internal sealed class TabContentViewModel : ViewModel, IExplorerTab, IDisposable
             if (SetValue(ref tabPath, value))
             {
                 UpdateBreadcrumbs();
+                NotifyViewChanged();
                 CommandManager.InvalidateRequerySuggested();
             }
         }
@@ -166,7 +192,11 @@ internal sealed class TabContentViewModel : ViewModel, IExplorerTab, IDisposable
     public bool IsLoading
     {
         get => isLoading;
-        set => SetValue(ref isLoading, value);
+        set
+        {
+            if (SetValue(ref isLoading, value))
+                OnPropertyChanged(nameof(EmptyText));
+        }
     }
 
     public string SearchText
@@ -198,12 +228,47 @@ internal sealed class TabContentViewModel : ViewModel, IExplorerTab, IDisposable
             {
                 OnPropertyChanged(nameof(IsDetailsView));
                 OnPropertyChanged(nameof(IsTilesView));
+                NotifyViewChanged();
             }
         }
     }
 
     public bool IsDetailsView => CurrentViewMode == ViewMode.Details;
     public bool IsTilesView => CurrentViewMode == ViewMode.Tiles;
+
+    // The home screen always shows drive cards.
+    public bool IsHome => string.IsNullOrEmpty(TabPath);
+    public bool ShowDetails => !IsHome && IsDetailsView;
+    public bool ShowTiles => !IsHome && IsTilesView;
+
+    public ImageSource? TabIcon
+    {
+        get => tabIcon;
+        private set => SetValue(ref tabIcon, value);
+    }
+
+    public string SearchHint => IsHome ? "חיפוש" : $"חיפוש ב-{TabTitle}";
+
+    public string ItemsText => FileSystemObjects.Count == 1 ? "פריט אחד" : $"{FileSystemObjects.Count} פריטים";
+
+    public string SelectionText
+    {
+        get
+        {
+            if (selectedItems.Count == 0)
+                return string.Empty;
+
+            string text = selectedItems.Count == 1 ? "פריט 1 נבחר" : $"{selectedItems.Count} פריטים נבחרו";
+            return selectedItems.All(item => !item.IsDirectory)
+                ? $"{text}   \u200E{BytesToNormalSize.FormatBytes(selectedItems.Sum(item => item.Size))}\u200E"
+                : text;
+        }
+    }
+
+    public string EmptyText => IsLoading || !itemsView.IsEmpty ? string.Empty
+        : SearchText.Length > 0 ? "לא נמצאו פריטים התואמים לחיפוש."
+        : IsHome ? "לא נמצאו כוננים זמינים. חבר כונן USB כדי להתחיל."
+        : "תיקייה זו ריקה.";
 
     /// <summary>Shows the home screen. Separate from construction so that creating a tab reads no drives.</summary>
     public void Start()
@@ -229,6 +294,7 @@ internal sealed class TabContentViewModel : ViewModel, IExplorerTab, IDisposable
     {
         selectedItems.Clear();
         selectedItems.AddRange(items);
+        OnPropertyChanged(nameof(SelectionText));
         CommandManager.InvalidateRequerySuggested();
     }
 
@@ -262,8 +328,7 @@ internal sealed class TabContentViewModel : ViewModel, IExplorerTab, IDisposable
             if (!policy.CanNavigate(path, out var reason))
                 return Deny(path, reason);
 
-            TabPath = Path.GetFullPath(path);
-            Reload();
+            Navigate(Path.GetFullPath(path));
             return true;
         }
 
@@ -274,10 +339,35 @@ internal sealed class TabContentViewModel : ViewModel, IExplorerTab, IDisposable
         return false;
     }
 
-    public void GoHome()
+    public void GoHome() => Navigate(null);
+
+    private void Navigate(string? path)
     {
-        TabPath = null;
+        if (!string.Equals(path, TabPath, StringComparison.OrdinalIgnoreCase))
+        {
+            backHistory.Push(TabPath);
+            forwardHistory.Clear();
+        }
+
+        SearchText = string.Empty;
+        TabPath = path;
         Reload();
+    }
+
+    private void GoInHistory(Stack<string?> from, Stack<string?> to)
+    {
+        if (from.Count == 0) return;
+
+        to.Push(TabPath);
+        SearchText = string.Empty;
+        TabPath = from.Pop();
+        Reload();
+    }
+
+    private void OpenInNewTab(string? path)
+    {
+        if (Directory.Exists(path))
+            NewTabRequested?.Invoke(path);
     }
 
     /// <summary>Loads the current path. Loading the same path again keeps the selection and the scroll position.</summary>
@@ -438,8 +528,7 @@ internal sealed class TabContentViewModel : ViewModel, IExplorerTab, IDisposable
         if (TabPath == null) return;
 
         string? parent = Path.GetDirectoryName(TabPath);
-        TabPath = !string.IsNullOrEmpty(parent) && policy.CanNavigate(parent, out _) ? parent : null;
-        Reload();
+        Navigate(!string.IsNullOrEmpty(parent) && policy.CanNavigate(parent, out _) ? parent : null);
     }
 
     private void BeginAddressEdit()
@@ -472,6 +561,24 @@ internal sealed class TabContentViewModel : ViewModel, IExplorerTab, IDisposable
             TabTitle = DriveDescriber.GetLabel(TabPath);
         else
             TabTitle = Path.GetFileName(TabPath);
+
+        TabIcon = IsHome ? null
+            : Path.GetPathRoot(TabPath) == TabPath ? ShellIcons.ForLocation(TabPath!).Small
+            : ShellIcons.ForFolder().Small;
+    }
+
+    private void NotifyViewChanged()
+    {
+        OnPropertyChanged(nameof(IsHome));
+        OnPropertyChanged(nameof(ShowDetails));
+        OnPropertyChanged(nameof(ShowTiles));
+        OnPropertyChanged(nameof(SearchHint));
+    }
+
+    private void NotifyItemsChanged()
+    {
+        OnPropertyChanged(nameof(ItemsText));
+        OnPropertyChanged(nameof(EmptyText));
     }
 
     private void UpdateBreadcrumbs()
@@ -493,6 +600,7 @@ internal sealed class TabContentViewModel : ViewModel, IExplorerTab, IDisposable
         itemsView.Filter = query.Length == 0
             ? null
             : item => item is FileSystemObject entry && entry.Name.Contains(query, StringComparison.OrdinalIgnoreCase);
+        OnPropertyChanged(nameof(EmptyText));
     }
 
     private bool IsOnDrive(string root) =>

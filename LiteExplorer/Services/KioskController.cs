@@ -2,11 +2,14 @@ using LiteExplorer.MVVM.Models;
 using System;
 using System.ComponentModel;
 using System.Windows;
+using System.Windows.Shell;
 
 namespace LiteExplorer.Services;
 
 public class KioskController : IKioskController
 {
+    private const double CaptionHeight = 44;
+
     public static KioskController Instance { get; } = new();
 
     public bool IsKioskModeEnabled { get; set; }
@@ -34,6 +37,14 @@ public class KioskController : IKioskController
             window.WindowStyle = WindowStyle.SingleBorderWindow;
             window.ResizeMode = ResizeMode.CanResize;
             window.WindowState = WindowState.Normal;
+        }
+
+        if (WindowChrome.GetWindowChrome(window) is { } chrome)
+        {
+            // Dragging or double-clicking the caption would restore the full-screen window.
+            var adjusted = (WindowChrome)chrome.Clone();
+            adjusted.CaptionHeight = IsKioskModeEnabled ? 0 : CaptionHeight;
+            WindowChrome.SetWindowChrome(window, adjusted);
         }
 
         AuditService.Instance.Log(

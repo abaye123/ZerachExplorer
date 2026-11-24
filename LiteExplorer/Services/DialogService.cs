@@ -11,8 +11,8 @@ public interface IDialogService
     void Warn(string message, string title);
     void Error(string message, string title);
 
-    /// <summary>Asks a yes/no question where "no" is the default.</summary>
-    bool Confirm(string message, string title);
+    /// <summary>Asks for confirmation; cancelling is the default.</summary>
+    bool Confirm(string message, string title, string acceptText);
 
     string? AskText(string prompt, string title, string initialValue);
     bool AskNewFolder(string parentDirectory, [NotNullWhen(true)] out string? name);
@@ -24,8 +24,6 @@ public interface IDialogService
 
 public class DialogService : IDialogService
 {
-    private const MessageBoxOptions Rtl = MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading;
-
     private readonly IPathPolicy policy;
     private readonly IConfigurationService configuration;
 
@@ -37,20 +35,17 @@ public class DialogService : IDialogService
 
     private static Window? Owner => Application.Current?.MainWindow;
 
-    public void Info(string message, string title) => Show(message, title, MessageBoxImage.Information);
+    public void Info(string message, string title) => MessageDialog.Show(Owner, message, title, MessageKind.Info);
 
-    public void Warn(string message, string title) => Show(message, title, MessageBoxImage.Warning);
+    public void Warn(string message, string title) => MessageDialog.Show(Owner, message, title, MessageKind.Warning);
 
-    public void Error(string message, string title) => Show(message, title, MessageBoxImage.Error);
+    public void Error(string message, string title) => MessageDialog.Show(Owner, message, title, MessageKind.Error);
 
-    public bool Confirm(string message, string title) =>
-        MessageBox.Show(message, title, MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No, Rtl) == MessageBoxResult.Yes;
+    public bool Confirm(string message, string title, string acceptText) =>
+        MessageDialog.Show(Owner, message, title, MessageKind.Question, acceptText);
 
-    public string? AskText(string prompt, string title, string initialValue)
-    {
-        string answer = Microsoft.VisualBasic.Interaction.InputBox(prompt, title, initialValue);
-        return string.IsNullOrWhiteSpace(answer) ? null : answer.Trim();
-    }
+    public string? AskText(string prompt, string title, string initialValue) =>
+        TextInputDialog.Prompt(Owner, prompt, title, initialValue);
 
     public bool AskNewFolder(string parentDirectory, [NotNullWhen(true)] out string? name) =>
         NewFolderDialog.Prompt(Owner, parentDirectory, policy, out name);
@@ -68,7 +63,4 @@ public class DialogService : IDialogService
     }
 
     public void ShowAbout() => new AboutWindow { Owner = Owner }.ShowDialog();
-
-    private static void Show(string message, string title, MessageBoxImage image) =>
-        MessageBox.Show(message, title, MessageBoxButton.OK, image, MessageBoxResult.OK, Rtl);
 }

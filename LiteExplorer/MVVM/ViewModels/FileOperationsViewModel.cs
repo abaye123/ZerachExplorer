@@ -172,15 +172,15 @@ internal sealed class FileOperationsViewModel
 
     private async Task<bool> ConfirmDeletionAsync(List<string> targets, bool recyclable)
     {
-        string subject = targets.Count == 1 ? $"את הפריט:\n{targets[0]}" : $"{targets.Count} פריטים";
+        string subject = targets.Count == 1 ? $"למחוק את הפריט?\n{targets[0]}" : $"למחוק {targets.Count} פריטים?";
         string details = await FolderInspector.DescribeContentsAsync(targets.Where(Directory.Exists).ToList());
         string consequence = recyclable
             ? "הפריטים יועברו לסל המיחזור."
             : "שים לב: אין בכונן זה סל מיחזור. המחיקה סופית ולא ניתן יהיה לשחזר!";
 
         return dialogs.Confirm(
-            $"האם אתה בטוח שברצונך למחוק {subject}?\n\n{details}{consequence}",
-            recyclable ? "אישור מחיקה" : "אזהרת מחיקה לצמיתות");
+            $"{subject}\n\n{details}{consequence}",
+            recyclable ? "מחיקת פריטים" : "מחיקה לצמיתות", "מחיקה");
     }
 
     private void Rename(object? parameter)
@@ -201,7 +201,7 @@ internal sealed class FileOperationsViewModel
         }
 
         string currentName = Path.GetFileNameWithoutExtension(path);
-        string? newName = dialogs.AskText("הכנס את השם החדש לקובץ:", "שינוי שם הקובץ", currentName);
+        string? newName = dialogs.AskText("השם החדש (הסיומת נשמרת):", "שינוי שם", currentName);
         if (newName == null || string.Equals(newName, currentName, StringComparison.OrdinalIgnoreCase))
             return;
 

@@ -9,7 +9,7 @@ using System.Windows.Controls;
 
 namespace LiteExplorer.MVVM.Views.Windows;
 
-public partial class AdminSettingsWindow : Window
+public partial class AdminSettingsWindow : DialogWindow
 {
     private readonly IConfigurationService configService;
     private readonly IPathPolicy pathPolicy;
@@ -101,7 +101,7 @@ public partial class AdminSettingsWindow : Window
     {
         try
         {
-            return drive.IsReady ? $"{drive.Name} {drive.VolumeLabel}" : drive.Name;
+            return drive.IsReady ? DriveDescriber.GetLabel(drive) : drive.Name;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -183,7 +183,7 @@ public partial class AdminSettingsWindow : Window
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"נתיב לא חוקי: {ex.Message}", "שגיאה", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageDialog.Show(this, $"נתיב לא חוקי: {ex.Message}", "תיקיות מאושרות", MessageKind.Warning);
         }
     }
 
@@ -203,7 +203,7 @@ public partial class AdminSettingsWindow : Window
         if (newPass.Length < ConfigurationService.MinimumPasswordLength)
         {
             TxtPasswordStatus.Text = $"הסיסמה חייבת להכיל לפחות {ConfigurationService.MinimumPasswordLength} תווים.";
-            TxtPasswordStatus.Foreground = System.Windows.Media.Brushes.Red;
+            TxtPasswordStatus.Foreground = (System.Windows.Media.Brush)FindResource("ErrorBrush");
             TxtPasswordStatus.Visibility = Visibility.Visible;
             return;
         }
@@ -211,14 +211,14 @@ public partial class AdminSettingsWindow : Window
         if (newPass != confirmPass)
         {
             TxtPasswordStatus.Text = "הסיסמאות אינן תואמות.";
-            TxtPasswordStatus.Foreground = System.Windows.Media.Brushes.Red;
+            TxtPasswordStatus.Foreground = (System.Windows.Media.Brush)FindResource("ErrorBrush");
             TxtPasswordStatus.Visibility = Visibility.Visible;
             return;
         }
 
         configService.SetPassword(workingConfig, newPass);
         TxtPasswordStatus.Text = "הסיסמה עודכנה בהצלחה (תשמר בלחיצה על שמור).";
-        TxtPasswordStatus.Foreground = System.Windows.Media.Brushes.Green;
+        TxtPasswordStatus.Foreground = (System.Windows.Media.Brush)FindResource("SuccessBrush");
         TxtPasswordStatus.Visibility = Visibility.Visible;
         TxtNewPassword.Clear();
         TxtConfirmPassword.Clear();
@@ -274,7 +274,6 @@ public partial class AdminSettingsWindow : Window
             KioskController.Instance.ApplyKioskWindowSettings(Application.Current.MainWindow);
             AuditService.Instance.Log(AuditEventType.AdminAccess, "Settings", "Settings saved", true);
             DialogResult = true;
-            Close();
         }
         else
         {
@@ -284,10 +283,4 @@ public partial class AdminSettingsWindow : Window
 
     private static bool TryReadNumber(TextBox box, int maximum, out int value) =>
         int.TryParse(box.Text.Trim(), out value) && value >= 1 && value <= maximum;
-
-    private void Cancel_Click(object sender, RoutedEventArgs e)
-    {
-        DialogResult = false;
-        Close();
-    }
 }

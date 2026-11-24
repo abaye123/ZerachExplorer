@@ -6,7 +6,7 @@ using System.Windows;
 
 namespace LiteExplorer.MVVM.Views.Windows;
 
-public partial class NewFolderDialog : Window
+public partial class NewFolderDialog : DialogWindow
 {
     private readonly string parentDirectory;
     private readonly IPathPolicy pathPolicy;
@@ -51,13 +51,6 @@ public partial class NewFolderDialog : Window
 
         FolderName = name;
         DialogResult = true;
-        Close();
-    }
-
-    private void OnCancelClick(object sender, RoutedEventArgs e)
-    {
-        DialogResult = false;
-        Close();
     }
 
     private void ShowError(string message)

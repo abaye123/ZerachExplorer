@@ -6,7 +6,7 @@ namespace LiteExplorer.MVVM.Views.Windows;
 /// <summary>
 /// First-time setup, or repair of a damaged configuration. Saving requires a Windows administrator.
 /// </summary>
-public partial class SetPasswordDialog : Window
+public partial class SetPasswordDialog : DialogWindow
 {
     private readonly IConfigurationService configService;
 

@@ -29,11 +29,23 @@ public class MainWindowTests
         for (int i = 0; i < 200; i++)
             temp.Write($"file{i:D3}.txt", "שלום");
         temp.Write(@"sub\x.txt", "x");
+        temp.Write("שיעור מספר 12 בנושא חשוב מאוד עם שם ארוך.docx", "x");
+        temp.Write("SanDisk Software installation guide long name.pdf", "x");
+        temp.Write("table.xlsx", "x");
+        temp.Write("setup.exe", "x");
+        Directory.CreateDirectory(temp.At("תיקייה בעברית"));
+        Directory.CreateDirectory(temp.At("New folder (2)"));
 
         // Not App itself: it would start the real application with the real settings.
         var application = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
-        application.Resources.MergedDictionaries.Add(new Wpf.Ui.Markup.ThemesDictionary { Theme = Wpf.Ui.Appearance.ThemeType.Light });
-        application.Resources.MergedDictionaries.Add(new Wpf.Ui.Markup.ControlsDictionary());
+        foreach (var source in new[]
+                 {
+                     "pack://application:,,,/PresentationFramework.Fluent;component/Themes/Fluent.Light.xaml",
+                     "pack://application:,,,/ZerachExplorer;component/Themes/Theme.xaml"
+                 })
+        {
+            application.Resources.MergedDictionaries.Add(new ResourceDictionary { Source = new Uri(source) });
+        }
 
         var errors = new BindingErrors();
         PresentationTraceSources.Refresh();
@@ -51,10 +63,14 @@ public class MainWindowTests
         window.Show();
 
         var tab = main.CurrentTab!;
+        await Ui.Until(() => !tab.IsLoading);
+        await Task.Delay(200);
+        Save(window, "home");
         tab.Open(temp.Root);
         await Ui.Until(() => !tab.IsLoading);
         await Task.Delay(300);
 
+        Save(window, "list");
         var list = Find<ListView>(window).Single();
         list.SelectedItems.Add(list.Items[150]);
         list.SelectedItems.Add(list.Items[152]);
@@ -87,15 +103,51 @@ public class MainWindowTests
         Assert.Equal(2, main.Tabs.Count);
         Assert.Equal(temp.Root, tab.TabPath);
 
-        var admin = new AdminSettingsWindow(configuration, policy) { Left = -5000, ShowInTaskbar = false, ShowActivated = false };
-        admin.Show();
-        await Task.Delay(100);
-        Find<TabControl>(admin).Single().SelectedIndex = 4;
-        await Task.Delay(100);
-        Save(admin, "admin");
+        await Task.Delay(200);
+        Save(window, "tabs");
+        Assert.IsNotType<TextBox>(System.Windows.Input.Keyboard.FocusedElement);
+        main.CloseTabCmd.Execute(main.CurrentTab);
+        Assert.Same(tab, main.CurrentTab);
+
+        var admin = new AdminSettingsWindow(configuration, policy);
+        await ShowAsync(admin, "admin0", keepOpen: true);
+        for (int page = 1; page < 7; page++)
+        {
+            Find<TabControl>(admin).Single().SelectedIndex = page;
+            await Task.Delay(60);
+            Save(admin, $"admin{page}");
+        }
         admin.Close();
-        new AboutWindow { Left = -5000 }.Close();
-        new QuickUsbDialog(@"E:\", "Stick").Close();
+
+        await ShowAsync(new MessageDialog("סוג הקובץ '.exe' אינו מאושר לפתיחה במערכת.", "גישה נדחתה", MessageKind.Warning), "warning");
+        await ShowAsync(new MessageDialog("למחוק את הפריט?\nD:\\תיקייה\\file name.txt\n\nשים לב: אין בכונן זה סל מיחזור. המחיקה סופית!", "מחיקה לצמיתות", MessageKind.Question, "מחיקה"), "question");
+        await ShowAsync(new MessageDialog("אירעה שגיאה", "שגיאה", MessageKind.Error), "error");
+        await ShowAsync(new AboutWindow(), "about");
+        await ShowAsync(new QuickUsbDialog("הדסה (\u200ED:\u200E)"), "usb");
+        await ShowAsync(new NewFolderDialog(temp.Root, policy), "folder");
+        await ShowAsync(new AdminPasswordDialog(configuration), "password");
+        await ShowAsync(new SetPasswordDialog(configuration), "setpassword");
+        await ShowAsync(new ConflictResolutionDialog("setup.exe", temp.At("setup.exe"), temp.At("table.xlsx")), "conflict");
+
+        foreach (var button in Find<Button>(window).Where(b => b.ContextMenu != null).Take(2))
+        {
+            button.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+            await Task.Delay(200);
+            Assert.All(button.ContextMenu!.Items.OfType<MenuItem>(), menuItem => Assert.NotNull(menuItem.Command));
+            button.ContextMenu.IsOpen = false;
+        }
+
+        // The item menu is outside the visual tree, where a wrong binding silently disables every command.
+        tab.CurrentViewMode = ViewMode.Details;
+        await Task.Delay(200);
+        var row = Find<ListViewItem>(window).First();
+        row.IsSelected = true;
+        row.ContextMenu!.PlacementTarget = row;
+        row.ContextMenu.IsOpen = true;
+        await Task.Delay(200);
+        Assert.All(row.ContextMenu.Items.OfType<MenuItem>(), menuItem => Assert.NotNull(menuItem.Command));
+        Save((FrameworkElement)VisualTreeHelper.GetParent(row.ContextMenu) ?? row.ContextMenu, "menu");
+        row.ContextMenu.IsOpen = false;
 
         window.Close();
         foreach (var item in main.Tabs)
@@ -116,14 +168,27 @@ public class MainWindowTests
         }
     }
 
+    private static async Task ShowAsync(Window dialog, string name, bool keepOpen = false)
+    {
+        dialog.WindowStartupLocation = WindowStartupLocation.Manual;
+        dialog.Left = -5000;
+        dialog.ShowActivated = false;
+        dialog.Show();
+        await Task.Delay(120);
+        Save(dialog, name);
+        if (!keepOpen)
+            dialog.Close();
+    }
+
+    private static void Save(Window window, string name) => Save((FrameworkElement)VisualTreeHelper.GetChild(window, 0), name);
+
     /// <summary>Set ZERACH_SCREENSHOTS to a folder to look at the result.</summary>
-    private static void Save(Window window, string name)
+    private static void Save(FrameworkElement content, string name)
     {
         if (Environment.GetEnvironmentVariable("ZERACH_SCREENSHOTS") is not { Length: > 0 } folder)
             return;
 
-        var content = (FrameworkElement)VisualTreeHelper.GetChild(window, 0);
-        var bitmap = new RenderTargetBitmap((int)window.ActualWidth, (int)window.ActualHeight, 96, 96, PixelFormats.Pbgra32);
+        var bitmap = new RenderTargetBitmap((int)(content.ActualWidth * 1.5), (int)(content.ActualHeight * 1.5), 144, 144, PixelFormats.Pbgra32);
         bitmap.Render(content);
         var encoder = new PngBitmapEncoder();
         encoder.Frames.Add(BitmapFrame.Create(bitmap));

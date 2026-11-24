@@ -1,5 +1,3 @@
-using LiteExplorer.Helpers;
-using LiteExplorer.Helpers.Enums;
 using LiteExplorer.Helpers.WinAPI;
 using LiteExplorer.MVVM.Models;
 using System.IO;
@@ -113,28 +111,30 @@ internal sealed class DirectoryLoader : IDirectoryLoader
 
     private static FileSystemObject CreateDirectory(DirectoryInfo directory) => new()
     {
-        Image = FolderManager.GetImageSource(directory.FullName, ItemState.Undefined),
+        Image = ShellIcons.ForFolder().Small,
+        LargeImage = ShellIcons.ForFolder().Large,
         Name = directory.Name,
         Path = directory.FullName,
         TotalSpace = NotApplicableSpace,
         FreeSpace = NotApplicableSpace,
-        Format = directory.LastWriteTime.ToString(),
+        Format = directory.LastWriteTime.ToString("g"),
         Type = "תיקיית קבצים",
-        LastWriteTime = directory.LastWriteTime.ToString(),
+        LastWriteTime = directory.LastWriteTime.ToString("g"),
         RawLastWriteTime = directory.LastWriteTime,
         IsDirectory = true
     };
 
     private static FileSystemObject CreateFile(FileInfo file) => new()
     {
-        Image = FileManager.GetImageSource(file.FullName),
+        Image = ShellIcons.ForFile(file.Name).Small,
+        LargeImage = ShellIcons.ForFile(file.Name).Large,
         Name = file.Name,
         Path = file.FullName,
         Size = file.Length,
-        Format = file.LastWriteTime.ToString(),
+        Format = file.LastWriteTime.ToString("g"),
         Type = ShellManager.GetFileTypeDescription(file.Extension),
-        CreationTime = file.CreationTime.ToString(),
-        LastWriteTime = file.LastWriteTime.ToString(),
+        CreationTime = file.CreationTime.ToString("g"),
+        LastWriteTime = file.LastWriteTime.ToString("g"),
         RawLastWriteTime = file.LastWriteTime,
         TotalSpace = NotApplicableSpace,
         FreeSpace = NotApplicableSpace

@@ -1,5 +1,4 @@
-using LiteExplorer.Helpers;
-using LiteExplorer.Helpers.Enums;
+using LiteExplorer.Helpers.WinAPI;
 using LiteExplorer.MVVM.Models;
 using System.IO;
 
@@ -12,7 +11,8 @@ internal static class DriveDescriber
         try
         {
             string label = drive.IsReady && !string.IsNullOrEmpty(drive.VolumeLabel) ? drive.VolumeLabel : "דיסק מקומי";
-            return $"{label} ({drive.Name})";
+            // The marks keep "(D:)" intact inside right-to-left text.
+            return $"{label} (\u200E{drive.Name.TrimEnd('\\')}\u200E)";
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -54,7 +54,8 @@ internal static class DriveDescriber
 
     public static FileSystemObject CreateItem(DriveInfo drive) => new()
     {
-        Image = FolderManager.GetImageSource(drive.RootDirectory.FullName, ItemState.Undefined),
+        Image = ShellIcons.ForLocation(drive.Name).Small,
+        LargeImage = ShellIcons.ForLocation(drive.Name).Large,
         Name = GetLabel(drive),
         Path = drive.Name,
         IsDirectory = true,

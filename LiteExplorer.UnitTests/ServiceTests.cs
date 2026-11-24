@@ -290,11 +290,4 @@ public sealed class ServiceTests : IDisposable
 
     [Fact]
     public void ConflictDefaultsToSkip() => Assert.Equal(ConflictResolutionAction.Skip, new ConflictResolutionResult().Action);
-
-    [Fact]
-    public void IconCachesClear()
-    {
-        FileManager.ClearCache();
-        FolderManager.ClearCache();
-    }
 }

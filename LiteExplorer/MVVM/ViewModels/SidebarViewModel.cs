@@ -1,5 +1,4 @@
-using LiteExplorer.Helpers;
-using LiteExplorer.Helpers.Enums;
+using LiteExplorer.Helpers.WinAPI;
 using LiteExplorer.MVVM.Models;
 using LiteExplorer.Services;
 using System.Collections.ObjectModel;
@@ -50,7 +49,7 @@ internal sealed class SidebarViewModel
                 Name = c.Item1,
                 Path = c.Item2,
                 IsDirectory = true,
-                Image = FolderManager.GetImageSource(c.Item2, ItemState.Undefined)
+                Image = ShellIcons.ForLocation(c.Item2).Small
             });
     }
 

@@ -1,3 +1,4 @@
+using LiteExplorer.Infrastructure.Converters;
 using LiteExplorer.MVVM.ViewModels.Base;
 using System;
 using System.Windows.Media;
@@ -11,6 +12,13 @@ internal class FileSystemObject : ViewModel
     {
         get => image;
         set => SetValue(ref image, value);
+    }
+
+    private ImageSource? largeImage;
+    public ImageSource? LargeImage
+    {
+        get => largeImage;
+        set => SetValue(ref largeImage, value);
     }
 
     private string name = string.Empty;
@@ -111,6 +119,14 @@ internal class FileSystemObject : ViewModel
         set => SetValue(ref isCalculatingSize, value);
     }
 
+    public string SpaceText => TotalSpace <= 0
+        ? string.Empty
+        : $"\u200E{BytesToNormalSize.FormatBytes(FreeSpace)}\u200E פנויים מתוך \u200E{BytesToNormalSize.FormatBytes(TotalSpace)}\u200E";
+
+    public double UsedPercent => TotalSpace <= 0 ? 0 : 100.0 * (TotalSpace - FreeSpace) / TotalSpace;
+
+    public bool ShowSpace => IsDrive && TotalSpace > 0;
+
     /// <summary>Takes over newer details of the same item; returns whether anything changed.</summary>
     public bool UpdateFrom(FileSystemObject newer)
     {
@@ -125,11 +141,15 @@ internal class FileSystemObject : ViewModel
         Type = newer.Type;
         Format = newer.Format;
         Image = newer.Image;
+        LargeImage = newer.LargeImage;
         CreationTime = newer.CreationTime;
         LastWriteTime = newer.LastWriteTime;
         RawLastWriteTime = newer.RawLastWriteTime;
         FreeSpace = newer.FreeSpace;
         TotalSpace = newer.TotalSpace;
+        OnPropertyChanged(nameof(SpaceText));
+        OnPropertyChanged(nameof(UsedPercent));
+        OnPropertyChanged(nameof(ShowSpace));
         if (!IsPlainFolder)
             Size = newer.Size;
         return true;

@@ -1,7 +1,6 @@
 using LiteExplorer.Helpers.Enums;
 using System;
 using System.Collections.Concurrent;
-using System.Drawing;
 using System.Runtime.InteropServices;
 
 namespace LiteExplorer.Helpers.WinAPI;
@@ -29,35 +28,5 @@ public static class ShellManager
 
             return "קובץ";
         });
-    }
-
-    public static Icon? GetIcon(string path, ItemType type, IconSize iconSize, ItemState state)
-    {
-        var attributes = (uint)(type == ItemType.Folder ? FileAttribute.Directory : FileAttribute.File);
-        var flags = (uint)(ShellAttribute.Icon | ShellAttribute.UseFileAttributes);
-
-        if (type == ItemType.Folder && state == ItemState.Open)
-            flags |= (uint)ShellAttribute.OpenIcon;
-
-        if (iconSize == IconSize.Small)
-            flags |= (uint)ShellAttribute.SmallIcon;
-        else
-            flags |= (uint)ShellAttribute.LargeIcon;
-
-        var fileInfo = new ShellFileInfo();
-        var size = (uint)Marshal.SizeOf(fileInfo);
-        var result = Interop.SHGetFileInfo(path, attributes, out fileInfo, size, flags);
-
-        if (result == IntPtr.Zero || fileInfo.hIcon == IntPtr.Zero)
-            return null;
-
-        try
-        {
-            return (Icon)Icon.FromHandle(fileInfo.hIcon).Clone();
-        }
-        finally
-        {
-            Interop.DestroyIcon(fileInfo.hIcon);
-        }
     }
 }

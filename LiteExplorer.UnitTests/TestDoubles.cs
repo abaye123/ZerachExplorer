@@ -72,7 +72,7 @@ public class FakeDialogs : IDialogService
     public void Warn(string message, string title) => Messages.Add(message);
     public void Error(string message, string title) => Messages.Add(message);
 
-    public bool Confirm(string message, string title)
+    public bool Confirm(string message, string title, string acceptText)
     {
         Messages.Add(message);
         return ConfirmAnswer;
@@ -126,7 +126,7 @@ public class StubPolicy : DispatchProxy
     protected override object? Invoke(MethodInfo? method, object?[]? args)
     {
         if (method!.ReturnType == typeof(PathPermissions)) return PathPermissions.CreateStandard();
-        if (method.ReturnType == typeof(IEnumerable<DriveInfo>)) return Array.Empty<DriveInfo>();
+        if (method.ReturnType == typeof(IEnumerable<DriveInfo>)) return DriveInfo.GetDrives().Where(drive => drive.IsReady).ToList();
         if (method.ReturnType == typeof(ISet<string>)) return new HashSet<string>();
         if (method.ReturnType != typeof(bool)) return null;
 

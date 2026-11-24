@@ -6,7 +6,7 @@ using System.Windows;
 
 namespace LiteExplorer.MVVM.Views.Windows;
 
-public partial class ConflictResolutionDialog : Window
+public partial class ConflictResolutionDialog : DialogWindow
 {
     public ConflictResolutionResult Result { get; } = new();
 
@@ -30,7 +30,7 @@ public partial class ConflictResolutionDialog : Window
         {
             var info = new FileInfo(path);
             return info.Exists
-                ? $"גודל: {BytesToNormalSize.FormatBytes(info.Length)} | עודכן: {info.LastWriteTime:dd/MM/yyyy HH:mm}"
+                ? $"גודל: \u200E{BytesToNormalSize.FormatBytes(info.Length)}\u200E, עודכן: \u200E{info.LastWriteTime:dd/MM/yyyy HH:mm}\u200E"
                 : "הקובץ אינו זמין לקריאה.";
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -39,36 +39,17 @@ public partial class ConflictResolutionDialog : Window
         }
     }
 
-    private void OnReplaceClick(object sender, RoutedEventArgs e)
+    private void OnReplaceClick(object sender, RoutedEventArgs e) => Choose(ConflictResolutionAction.Replace);
+
+    private void OnSkipClick(object sender, RoutedEventArgs e) => Choose(ConflictResolutionAction.Skip);
+
+    private void OnKeepBothClick(object sender, RoutedEventArgs e) => Choose(ConflictResolutionAction.KeepBoth);
+
+    private void Choose(ConflictResolutionAction action)
     {
-        Result.Action = ConflictResolutionAction.Replace;
+        Result.Action = action;
         Result.ApplyToAll = ChkApplyToAll.IsChecked == true;
         DialogResult = true;
-        Close();
-    }
-
-    private void OnSkipClick(object sender, RoutedEventArgs e)
-    {
-        Result.Action = ConflictResolutionAction.Skip;
-        Result.ApplyToAll = ChkApplyToAll.IsChecked == true;
-        DialogResult = true;
-        Close();
-    }
-
-    private void OnKeepBothClick(object sender, RoutedEventArgs e)
-    {
-        Result.Action = ConflictResolutionAction.KeepBoth;
-        Result.ApplyToAll = ChkApplyToAll.IsChecked == true;
-        DialogResult = true;
-        Close();
-    }
-
-    private void OnCancelClick(object sender, RoutedEventArgs e)
-    {
-        Result.Action = ConflictResolutionAction.Cancel;
-        Result.ApplyToAll = false;
-        DialogResult = false;
-        Close();
     }
 
     public static ConflictResolutionResult Prompt(Window? owner, string fileName, string existingPath, string incomingPath)
@@ -79,7 +60,9 @@ public partial class ConflictResolutionDialog : Window
             dlg.Owner = owner;
         }
 
-        dlg.ShowDialog();
+        // Closing the window in any other way cancels the transfer.
+        if (dlg.ShowDialog() != true)
+            dlg.Result.Action = ConflictResolutionAction.Cancel;
         return dlg.Result;
     }
 }

@@ -6,7 +6,7 @@ using System.Windows.Input;
 
 namespace LiteExplorer.MVVM.Views.Windows;
 
-public partial class AdminPasswordDialog : Window
+public partial class AdminPasswordDialog : DialogWindow
 {
     private readonly IConfigurationService configService;
 
@@ -36,12 +36,6 @@ public partial class AdminPasswordDialog : Window
         ValidateAndConfirm();
     }
 
-    private void Cancel_Click(object sender, RoutedEventArgs e)
-    {
-        DialogResult = false;
-        Close();
-    }
-
     private void TxtPassword_KeyDown(object sender, KeyEventArgs e)
     {
         if (e.Key == Key.Enter)
@@ -58,7 +52,6 @@ public partial class AdminPasswordDialog : Window
             IsAuthenticated = true;
             AuditService.Instance.Log(AuditEventType.AdminAccess, "Login", "Administrator authenticated", true);
             DialogResult = true;
-            Close();
         }
         else
         {

@@ -32,7 +32,7 @@ internal sealed class PreviewViewModel : IDisposable
         Info.FileName = item.Name;
         Info.FilePath = item.Path;
         Info.LastModifiedFormatted = item.LastWriteTime;
-        Info.IconPreview = item.Image;
+        Info.IconPreview = item.LargeImage ?? item.Image;
 
         if (item.IsDirectory)
         {

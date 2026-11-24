@@ -1,204 +1,150 @@
-<ui:UiWindow x:Class="LiteExplorer.MVVM.Views.Windows.MainWindow"
-             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-             xmlns:uc="clr-namespace:LiteExplorer.MVVM.Views.UserControls"
-             xmlns:c="clr-namespace:LiteExplorer.Infrastructure.Converters" 
-             xmlns:vm="clr-namespace:LiteExplorer.MVVM.ViewModels"
-             xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
-             d:DataContext="{d:DesignInstance vm:MainWindowViewModel, IsDesignTimeCreatable=False}"
-             mc:Ignorable="d"
-             Width="1120"
-             Height="680"
-             MinWidth="760"
-             MinHeight="480"
-             Title="{Binding CurrentTab.TabTitle, TargetNullValue='בית'}"
-             FontFamily="Segoe UI Variable Text, Segoe UI"
-             Background="#F0F4F9"
-             ExtendsContentIntoTitleBar="True"
-             WindowBackdropType="Mica"
-             WindowCornerPreference="Round"
-             FlowDirection="RightToLeft"
-             WindowStartupLocation="CenterScreen">
+<Window x:Class="LiteExplorer.MVVM.Views.Windows.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:uc="clr-namespace:LiteExplorer.MVVM.Views.UserControls"
+        x:Name="Root"
+        Width="1180"
+        Height="740"
+        MinWidth="820"
+        MinHeight="500"
+        Title="{Binding CurrentTab.TabTitle, StringFormat='{}{0} - זרח אקספלורר', TargetNullValue='זרח אקספלורר', FallbackValue='זרח אקספלורר'}"
+        Icon="../../../Assets/app.ico"
+        FontFamily="{StaticResource AppFont}"
+        FontSize="14"
+        Foreground="{StaticResource TextBrush}"
+        Background="{StaticResource TitleBarBrush}"
+        FlowDirection="RightToLeft"
+        UseLayoutRounding="True"
+        WindowStartupLocation="CenterScreen">
 
-    <ui:UiWindow.Resources>
-        <c:NonEmptyStringToVisibilityConverter x:Key="NonEmptyStringToVisibilityConverter" />
-    </ui:UiWindow.Resources>
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="44" ResizeBorderThickness="6" GlassFrameThickness="1" CornerRadius="0" UseAeroCaptionButtons="False" />
+    </WindowChrome.WindowChrome>
 
-    <ui:UiWindow.InputBindings>
-        <KeyBinding Key="Q"
-                    Command="{Binding CloseAppCmd}"
-                    Modifiers="Ctrl" />
-        <KeyBinding Key="T"
-                    Command="{Binding AddTabCmd}"
-                    Modifiers="Ctrl" />
-        <KeyBinding Key="W"
-                    Command="{Binding CloseTabCmd}"
-                    CommandParameter="{Binding CurrentTab}"
-                    Modifiers="Ctrl" />
-    </ui:UiWindow.InputBindings>
+    <Window.InputBindings>
+        <KeyBinding Key="Q" Modifiers="Ctrl" Command="{Binding CloseAppCmd}" />
+        <KeyBinding Key="T" Modifiers="Ctrl" Command="{Binding AddTabCmd}" />
+        <KeyBinding Key="W" Modifiers="Ctrl" Command="{Binding CloseTabCmd}" CommandParameter="{Binding CurrentTab}" />
+    </Window.InputBindings>
 
-    <DockPanel Background="#F0F4F9">
-        <!-- Window Title Bar -->
-        <ui:TitleBar Title="{Binding MainWindowTitle}"
-                     Height="32"
-                     Padding="10,4,10,0"
-                     DockPanel.Dock="Top"
-                     Icon="../../../Assets/app.ico"
-                     UseSnapLayout="True" />
+    <Border>
+        <Border.Style>
+            <Style TargetType="Border">
+                <Style.Triggers>
+                    <!-- A maximized window with a resize frame extends past the screen edges -->
+                    <MultiDataTrigger>
+                        <MultiDataTrigger.Conditions>
+                            <Condition Binding="{Binding WindowState, ElementName=Root}" Value="Maximized" />
+                            <Condition Binding="{Binding WindowStyle, ElementName=Root}" Value="SingleBorderWindow" />
+                        </MultiDataTrigger.Conditions>
+                        <Setter Property="Margin" Value="7" />
+                    </MultiDataTrigger>
+                </Style.Triggers>
+            </Style>
+        </Border.Style>
 
-        <!-- Windows 11 Style Status Bar -->
-        <Border DockPanel.Dock="Bottom"
-                DataContext="{Binding CurrentTab}"
-                Background="#F7F9FC"
-                BorderBrush="#E5E8EC"
-                BorderThickness="0,1,0,0"
-                Height="26"
-                Padding="12,0">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-
-                <TextBlock Grid.Column="0"
-                           VerticalAlignment="Center"
-                           Foreground="#5C5C5C"
-                           FontSize="12"
-                           Text="{Binding FileSystemObjects.Count, StringFormat='{}{0} פריטים'}" />
-
-                <Border Grid.Column="1"
-                        Width="1"
-                        Height="12"
-                        Margin="10,0"
-                        VerticalAlignment="Center"
-                        Background="#DCDFE4"
-                        Visibility="{Binding CurrentFileSystemObject.Path, Converter={StaticResource NonEmptyStringToVisibilityConverter}, FallbackValue=Collapsed}" />
-
-                <TextBlock Grid.Column="2"
-                           VerticalAlignment="Center"
-                           Foreground="#5C5C5C"
-                           FontSize="12"
-                           TextTrimming="CharacterEllipsis"
-                           Text="{Binding CurrentFileSystemObject.Path, StringFormat='נבחר: {0}'}" />
-
-                <ProgressBar Grid.Column="3"
-                             Width="140"
-                             Height="4"
-                             VerticalAlignment="Center"
-                             Value="{Binding ProgressPercent, Mode=OneWay}">
-                    <ProgressBar.Style>
-                        <Style TargetType="ProgressBar"
-                               BasedOn="{StaticResource {x:Type ProgressBar}}">
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding Value, RelativeSource={RelativeSource Self}}"
-                                             Value="100">
-                                    <Setter Property="Visibility"
-                                            Value="Hidden" />
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </ProgressBar.Style>
-                </ProgressBar>
-            </Grid>
-        </Border>
-
-        <!-- Windows 11 Explorer Tab Control -->
         <TabControl ItemsSource="{Binding Tabs}"
                     SelectedItem="{Binding CurrentTab}"
-                    Background="#FFFFFF"
                     BorderThickness="0"
                     Padding="0">
-            <TabControl.Resources>
-                <c:BoolToVisibility x:Key="BoolToVisibilityConverter" />
-            </TabControl.Resources>
             <TabControl.Template>
-                <ControlTemplate TargetType="{x:Type TabControl}">
-                    <Grid KeyboardNavigation.TabNavigation="Local">
+                <ControlTemplate TargetType="TabControl">
+                    <Grid>
                         <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="44" />
                             <RowDefinition Height="*" />
                         </Grid.RowDefinitions>
 
-                        <!-- Tab Strip -->
-                        <Border Grid.Row="0"
-                                Background="#EBF0F5"
-                                Padding="8,4,8,0">
-                            <ScrollViewer HorizontalScrollBarVisibility="Auto"
-                                          VerticalScrollBarVisibility="Disabled">
-                                <StackPanel Orientation="Horizontal" VerticalAlignment="Bottom">
-                                    <TabPanel x:Name="HeaderPanel"
-                                              Panel.ZIndex="1"
-                                              Background="Transparent"
-                                              IsItemsHost="True"
-                                              KeyboardNavigation.TabIndex="1" />
-                                    <ui:Button Margin="4,0,4,4"
-                                               Width="28"
-                                               Height="28"
-                                               MinWidth="0"
-                                               MinHeight="0"
-                                               Padding="0"
-                                               Command="{Binding AddTabCmd}"
-                                               Icon="Add16"
-                                               Foreground="#333333"
-                                               BorderBrush="Transparent"
-                                               Background="Transparent"
-                                               ToolTip="פתח כרטיסיה חדשה (Ctrl+T)" />
-                                </StackPanel>
-                            </ScrollViewer>
-                        </Border>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
 
-                        <!-- Tab Content -->
-                        <Border x:Name="Border"
-                                Grid.Row="1"
-                                Background="#FFFFFF"
-                                BorderThickness="0"
-                                KeyboardNavigation.DirectionalNavigation="Contained"
-                                KeyboardNavigation.TabIndex="2"
-                                KeyboardNavigation.TabNavigation="Local">
-                            <ContentPresenter x:Name="PART_SelectedContentHost"
-                                              Margin="0"
-                                              HorizontalAlignment="Stretch"
-                                              VerticalAlignment="Stretch"
-                                              ContentSource="SelectedContent" />
-                        </Border>
+                            <Image Source="../../../Assets/app.ico" Width="18" Height="18" Margin="14,0,8,0" Style="{StaticResource SharpImage}" />
+
+                            <DockPanel Grid.Column="1" LastChildFill="False" Margin="0,0,40,0">
+                                <ScrollViewer HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled" Focusable="False">
+                                    <StackPanel IsItemsHost="True" Orientation="Horizontal" VerticalAlignment="Bottom" />
+                                </ScrollViewer>
+                                <Button Content="&#xE710;"
+                                        Style="{StaticResource IconButton}"
+                                        WindowChrome.IsHitTestVisibleInChrome="True"
+                                        Width="36"
+                                        MinHeight="32"
+                                        FontSize="12"
+                                        Margin="6,0"
+                                        Command="{Binding AddTabCmd}"
+                                        ToolTip="כרטיסייה חדשה (Ctrl+T)" />
+                            </DockPanel>
+
+                            <StackPanel Grid.Column="2" Orientation="Horizontal">
+                                <StackPanel Orientation="Horizontal">
+                                    <StackPanel.Style>
+                                        <Style TargetType="StackPanel">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding ResizeMode, ElementName=Root}" Value="NoResize">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </StackPanel.Style>
+                                    <Button Content="&#xE921;" Style="{StaticResource CaptionButton}" Click="Minimize_Click" ToolTip="מזער" />
+                                    <Button Click="Maximize_Click" ToolTip="הגדל / שחזר">
+                                        <Button.Style>
+                                            <Style TargetType="Button" BasedOn="{StaticResource CaptionButton}">
+                                                <Setter Property="Content" Value="&#xE922;" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding WindowState, ElementName=Root}" Value="Maximized">
+                                                        <Setter Property="Content" Value="&#xE923;" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Button.Style>
+                                    </Button>
+                                </StackPanel>
+                                <Button Content="&#xE8BB;" Style="{StaticResource CloseCaptionButton}" Command="{Binding CloseAppCmd}" ToolTip="סגור" />
+                            </StackPanel>
+                        </Grid>
+
+                        <ContentPresenter x:Name="PART_SelectedContentHost" Grid.Row="1" ContentSource="SelectedContent" />
                     </Grid>
                 </ControlTemplate>
             </TabControl.Template>
 
             <TabControl.ItemContainerStyle>
-                <Style TargetType="{x:Type TabItem}">
+                <Style TargetType="TabItem">
                     <Setter Property="FocusVisualStyle" Value="{x:Null}" />
-                    <Setter Property="Background" Value="Transparent" />
-                    <Setter Property="Foreground" Value="#333333" />
+                    <Setter Property="WindowChrome.IsHitTestVisibleInChrome" Value="True" />
+                    <Setter Property="Tag" Value="{Binding DataContext, ElementName=Root}" />
+                    <EventSetter Event="PreviewMouseDown" Handler="Tab_PreviewMouseDown" />
+                    <Setter Property="ContextMenu">
+                        <Setter.Value>
+                            <ContextMenu Style="{StaticResource MenuPanel}" DataContext="{Binding PlacementTarget, RelativeSource={RelativeSource Self}}">
+                                <MenuItem Header="סגור כרטיסייה" Icon="&#xE711;" InputGestureText="Ctrl+W" Command="{Binding Tag.CloseTabCmd}" CommandParameter="{Binding DataContext}" />
+                                <MenuItem Header="סגור כרטיסיות אחרות" Command="{Binding Tag.CloseOtherTabsCmd}" CommandParameter="{Binding DataContext}" />
+                                <Separator />
+                                <MenuItem Header="כרטיסייה חדשה" Icon="&#xE710;" InputGestureText="Ctrl+T" Command="{Binding Tag.AddTabCmd}" />
+                            </ContextMenu>
+                        </Setter.Value>
+                    </Setter>
                     <Setter Property="Template">
                         <Setter.Value>
-                            <ControlTemplate TargetType="{x:Type TabItem}">
-                                <Border x:Name="TabBorder"
-                                        MinWidth="160"
-                                        MaxWidth="240"
-                                        Height="34"
-                                        Margin="2,0"
-                                        Padding="12,0,8,0"
-                                        Background="Transparent"
-                                        CornerRadius="8,8,0,0">
-                                    <ContentPresenter x:Name="ContentSite"
-                                                      HorizontalAlignment="Stretch"
-                                                      VerticalAlignment="Center"
-                                                      ContentSource="Header"
-                                                      RecognizesAccessKey="True" />
-                                </Border>
+                            <ControlTemplate TargetType="TabItem">
+                                <Grid Margin="0,7,0,0" Height="37">
+                                    <Border x:Name="Back" Margin="2,0,2,4" Background="Transparent" CornerRadius="6" />
+                                    <Border x:Name="Selected" Background="{StaticResource ToolbarBrush}" CornerRadius="8,8,0,0" Visibility="Collapsed" />
+                                    <Border x:Name="Divider" Width="1" Height="16" HorizontalAlignment="Right" Background="#22000000" />
+                                    <ContentPresenter Width="230" Margin="12,0,6,2" VerticalAlignment="Center" ContentSource="Header" />
+                                </Grid>
                                 <ControlTemplate.Triggers>
                                     <Trigger Property="IsMouseOver" Value="True">
-                                        <Setter TargetName="TabBorder" Property="Background" Value="#E0E6EE" />
+                                        <Setter TargetName="Back" Property="Background" Value="#66FFFFFF" />
                                     </Trigger>
                                     <Trigger Property="IsSelected" Value="True">
-                                        <Setter Property="Panel.ZIndex" Value="100" />
-                                        <Setter TargetName="TabBorder" Property="Background" Value="#F7F9FC" />
-                                        <Setter Property="Foreground" Value="#1A1A1A" />
+                                        <Setter TargetName="Selected" Property="Visibility" Value="Visible" />
+                                        <Setter TargetName="Divider" Property="Visibility" Value="Collapsed" />
                                     </Trigger>
                                 </ControlTemplate.Triggers>
                             </ControlTemplate>
@@ -209,45 +155,32 @@
 
             <TabControl.ItemTemplate>
                 <DataTemplate>
-                    <Grid VerticalAlignment="Center">
+                    <Grid ToolTip="{Binding TabPath}">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <ui:SymbolIcon Grid.Column="0"
-                                       Symbol="Folder20"
-                                       FontSize="15"
-                                       Foreground="#E0A628"
-                                       Margin="0,0,8,0"
-                                       VerticalAlignment="Center" />
-                        <TextBlock Grid.Column="1"
-                                   FlowDirection="RightToLeft"
-                                   Foreground="#1A1A1A"
-                                   FontSize="12"
-                                   FontWeight="Medium"
-                                   VerticalAlignment="Center"
-                                   TextTrimming="CharacterEllipsis"
-                                   Margin="0,0,8,0"
-                                   Text="{Binding TabTitle, TargetNullValue='בית'}" />
-                        <ui:Button Grid.Column="2"
-                                   Width="20"
-                                   Height="20"
-                                   MinWidth="0"
-                                   MinHeight="0"
-                                   Padding="0"
-                                   VerticalAlignment="Center"
-                                   HorizontalAlignment="Center"
-                                   Command="{Binding DataContext.CloseTabCmd, RelativeSource={RelativeSource AncestorType=ui:UiWindow}}"
-                                   CommandParameter="{Binding}"
-                                   Icon="Dismiss12"
-                                   Foreground="#5C5C5C"
-                                   Cursor="Hand"
-                                   Focusable="False"
-                                   ToolTip="סגור כרטיסיה (Ctrl+W)"
-                                   BorderBrush="Transparent"
-                                   Background="Transparent" />
+                        <Image x:Name="LocationIcon" Source="{Binding TabIcon}" Width="16" Height="16" Style="{StaticResource SharpImage}" />
+                        <TextBlock x:Name="HomeIcon" Text="&#xE80F;" Style="{StaticResource Glyph}" Foreground="{StaticResource AccentBrush}" Visibility="Collapsed" />
+                        <TextBlock Grid.Column="1" Text="{Binding TabTitle}" Style="{StaticResource NameText}" FontSize="13" Margin="10,0" />
+                        <Button Grid.Column="2"
+                                Content="&#xE711;"
+                                Style="{StaticResource IconButton}"
+                                FontSize="10"
+                                Width="28"
+                                MinWidth="28"
+                                MinHeight="28"
+                                Command="{Binding DataContext.CloseTabCmd, ElementName=Root}"
+                                CommandParameter="{Binding}"
+                                ToolTip="סגור כרטיסייה (Ctrl+W)" />
                     </Grid>
+                    <DataTemplate.Triggers>
+                        <DataTrigger Binding="{Binding IsHome}" Value="True">
+                            <Setter TargetName="LocationIcon" Property="Visibility" Value="Collapsed" />
+                            <Setter TargetName="HomeIcon" Property="Visibility" Value="Visible" />
+                        </DataTrigger>
+                    </DataTemplate.Triggers>
                 </DataTemplate>
             </TabControl.ItemTemplate>
 
@@ -257,5 +190,5 @@
                 </DataTemplate>
             </TabControl.ContentTemplate>
         </TabControl>
-    </DockPanel>
-</ui:UiWindow>
+    </Border>
+</Window>

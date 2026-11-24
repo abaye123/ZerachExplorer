@@ -5,6 +5,7 @@ using LiteExplorer.Services;
 using System.ComponentModel;
 using System.IO;
 using System.Windows;
+using System.Windows.Input;
 using System.Windows.Interop;
 
 namespace LiteExplorer.MVVM.Views.Windows;
@@ -21,6 +22,38 @@ public partial class MainWindow
         InitializeComponent();
         Loaded += (_, _) => KioskController.Instance.ApplyKioskWindowSettings(this);
         Closing += OnWindowClosing;
+        PreviewKeyDown += OnPreviewKeyDown;
+    }
+
+    private MainWindowViewModel ViewModel => (MainWindowViewModel)DataContext;
+
+    private void Minimize_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
+
+    private void Maximize_Click(object sender, RoutedEventArgs e) =>
+        WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+
+    private void Tab_PreviewMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton != MouseButton.Middle) return;
+
+        ViewModel.CloseTabCmd.Execute(((FrameworkElement)sender).DataContext);
+        e.Handled = true;
+    }
+
+    private void OnPreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if ((Keyboard.Modifiers & ModifierKeys.Control) == 0 || (Keyboard.Modifiers & ModifierKeys.Alt) != 0) return;
+
+        if (e.Key == Key.Tab)
+            ViewModel.CycleTab((Keyboard.Modifiers & ModifierKeys.Shift) == 0 ? 1 : -1);
+        else if (e.Key is >= Key.D1 and <= Key.D8 && Keyboard.Modifiers == ModifierKeys.Control && e.Key - Key.D1 < ViewModel.Tabs.Count)
+            ViewModel.SelectTab(e.Key - Key.D1);
+        else if (e.Key == Key.D9 && Keyboard.Modifiers == ModifierKeys.Control)
+            ViewModel.SelectTab(-1);
+        else
+            return;
+
+        e.Handled = true;
     }
 
     private void OnWindowClosing(object? sender, CancelEventArgs e) =>
@@ -66,8 +99,8 @@ public partial class MainWindow
         if (drive.DriveType != DriveType.Removable || !policy.IsDriveAllowed(drive, out _))
             return;
 
-        var dialog = new QuickUsbDialog(root, DriveDescriber.GetLabel(drive)) { Owner = this };
+        var dialog = new QuickUsbDialog(DriveDescriber.GetLabel(drive)) { Owner = this };
         if (dialog.ShowDialog() == true)
-            ((MainWindowViewModel)DataContext).OpenInAvailableTab(root);
+            ViewModel.OpenInAvailableTab(root);
     }
 }
