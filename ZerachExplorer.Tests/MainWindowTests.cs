@@ -123,6 +123,14 @@ public class MainWindowTests
         tab.ToggleAddressBarEditCmd.Execute(null);
         await Task.Delay(200);
         Save(window, "details");
+        // Issue 2: a space can be typed into the address.
+        var address = Find<TextBox>(window).Single(box => box.Name == "AddressInput");
+        address.Text = "a";
+        address.CaretIndex = 1;
+        var composition = new System.Windows.Input.TextComposition(System.Windows.Input.InputManager.Current, address, " ");
+        System.Windows.Input.TextCompositionManager.StartComposition(composition);
+        address.RaiseEvent(new System.Windows.Input.KeyEventArgs(System.Windows.Input.Keyboard.PrimaryDevice, PresentationSource.FromVisual(address), 0, System.Windows.Input.Key.Space) { RoutedEvent = UIElement.KeyDownEvent });
+        Assert.StartsWith("a ", tab.AddressText);
 
         tab.ToggleViewModeCmd.Execute(null);
         await Task.Delay(200);
