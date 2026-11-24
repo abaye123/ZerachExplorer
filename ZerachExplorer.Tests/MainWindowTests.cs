@@ -139,17 +139,19 @@ public class MainWindowTests
         tiles.ScrollIntoView(tiles.Items[0]);
         await Task.Delay(150);
         Save(window, "tilestop");
+        // The sort order, and with it the selected item, depends on the language of Windows.
+        object kept = tiles.SelectedItem;
         var selection = SelectionOf(window);
         selection.Press(tiles, new Point(0, 0), System.Windows.Input.ModifierKeys.Control);
         Assert.True(selection.Begin());
         selection.Update(new Point(200, 200));
         Assert.Contains(tiles.Items[0], tiles.SelectedItems.Cast<object>());
-        Assert.Contains(tiles.Items.Cast<FileSystemObject>().Single(i => i.Name == "file146.txt"), tiles.SelectedItems.Cast<object>());
+        Assert.Contains(kept, tiles.SelectedItems.Cast<object>());
         await Task.Delay(300);
         Save(window, "tilesrectangle");
         selection.End();
         tiles.SelectedItems.Clear();
-        tiles.SelectedItem = tiles.Items.Cast<FileSystemObject>().Single(i => i.Name == "file146.txt");
+        tiles.SelectedItem = kept;
 
         // Every line of a name fits inside its tile.
         Assert.All(Find<ListBoxItem>(tiles), item => Assert.All(Find<TextBlock>(item), text =>

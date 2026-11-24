@@ -261,6 +261,18 @@ public class PathPolicy : IPathPolicy
             return false;
         }
 
+        // "D:" and "D:folder" depend on the current directory, which is not what the user means.
+        if (trimmed.Length == 2 && trimmed[1] == Path.VolumeSeparatorChar)
+        {
+            trimmed += Path.DirectorySeparatorChar;
+        }
+        else if (trimmed.Length > 2 && trimmed[1] == Path.VolumeSeparatorChar &&
+                 trimmed[2] != Path.DirectorySeparatorChar && trimmed[2] != Path.AltDirectorySeparatorChar)
+        {
+            reason = "הנתיב אינו מלא.";
+            return false;
+        }
+
         string full;
         try
         {

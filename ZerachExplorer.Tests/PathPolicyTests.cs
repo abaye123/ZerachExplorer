@@ -1,3 +1,4 @@
+using System.IO;
 using ZerachExplorer.MVVM.Models;
 using ZerachExplorer.Services;
 using Xunit;
@@ -169,6 +170,24 @@ public class PathPolicyTests
         policy.Permissions.CanOpen = false;
 
         Assert.False(policy.CanPreviewFile(@"D:\PreviewTest\chiddush.docx", out _));
+    }
+
+    [Fact]
+    public void DriveLetterAloneMeansItsRoot()
+    {
+        string previous = Environment.CurrentDirectory;
+        Environment.CurrentDirectory = Path.GetTempPath();
+        try
+        {
+            string drive = Path.GetPathRoot(Path.GetTempPath())!.TrimEnd(Path.DirectorySeparatorChar);
+            Assert.True(policy.TryNormalizePath(drive, out var root, out _));
+            Assert.Equal(drive + "\\", root);
+            Assert.False(policy.TryNormalizePath(drive + "folder", out _, out _));
+        }
+        finally
+        {
+            Environment.CurrentDirectory = previous;
+        }
     }
 
     [Fact]
