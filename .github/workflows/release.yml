@@ -40,7 +40,7 @@ jobs:
           dotnet build LiteExplorer.sln --configuration Release --no-restore
 
       - name: Run automated test suite
-        run: dotnet run --project LiteExplorer.Tests/LiteExplorer.Tests.csproj --configuration Release --no-build
+        run: dotnet test LiteExplorer.sln --configuration Release --no-build
 
       - name: Publish Single-File Executable
         run: >

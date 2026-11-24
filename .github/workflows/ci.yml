@@ -35,19 +35,7 @@ jobs:
         run: dotnet build LiteExplorer.sln --configuration Release --no-restore
 
       - name: Run automated test suite
-        shell: pwsh
-        run: |
-          $testOutput = dotnet run --project LiteExplorer.Tests/LiteExplorer.Tests.csproj --configuration Release --no-build 2>&1
-          $exitCode = $LASTEXITCODE
-          $testOutput | ForEach-Object { Write-Host $_ }
-          $summaryLine = ($testOutput | Select-String -Pattern "Test Results:.*").Line
-          "## ZerachExplorer CI Test Results" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
-          if ($summaryLine) {
-            "**$summaryLine**" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
-          }
-          if ($exitCode -ne 0) {
-            exit $exitCode
-          }
+        run: dotnet test LiteExplorer.sln --configuration Release --no-build
 
       - name: Publish Self-Contained Single-File Executable
         run: >
