@@ -28,7 +28,7 @@ internal class PercentToColor : Converter
         {
             percent = System.Convert.ToDouble(value);
         }
-        catch
+        catch (Exception ex) when (ex is FormatException or InvalidCastException or OverflowException)
         {
             return InfoBrush;
         }

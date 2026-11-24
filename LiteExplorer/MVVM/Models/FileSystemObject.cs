@@ -6,21 +6,21 @@ namespace LiteExplorer.MVVM.Models;
 
 internal class FileSystemObject : ViewModel
 {
-    private ImageSource image;
-    public ImageSource Image
+    private ImageSource? image;
+    public ImageSource? Image
     {
         get => image;
         set => SetValue(ref image, value);
     }
 
-    private string name;
+    private string name = string.Empty;
     public string Name
     {
         get => name;
         set => SetValue(ref name, value);
     }
 
-    private string path;
+    private string path = string.Empty;
     public string Path
     {
         get => path;
@@ -48,29 +48,29 @@ internal class FileSystemObject : ViewModel
         set => SetValue(ref freeSpace, value);
     }
 
-    private string format;
-    public string Format
+    private string? format;
+    public string? Format
     {
         get => format;
         set => SetValue(ref format, value);
     }
 
-    private string type;
-    public string Type
+    private string? type;
+    public string? Type
     {
         get => type;
         set => SetValue(ref type, value);
     }
 
-    private string creationTime;
-    public string CreationTime
+    private string? creationTime;
+    public string? CreationTime
     {
         get => creationTime;
         set => SetValue(ref creationTime, value);
     }
 
-    private string lastWriteTime;
-    public string LastWriteTime
+    private string? lastWriteTime;
+    public string? LastWriteTime
     {
         get => lastWriteTime;
         set => SetValue(ref lastWriteTime, value);
@@ -110,4 +110,31 @@ internal class FileSystemObject : ViewModel
         get => isCalculatingSize;
         set => SetValue(ref isCalculatingSize, value);
     }
+
+    /// <summary>Takes over newer details of the same item; returns whether anything changed.</summary>
+    public bool UpdateFrom(FileSystemObject newer)
+    {
+        bool changed = Name != newer.Name || Path != newer.Path || Type != newer.Type || Format != newer.Format ||
+                       RawLastWriteTime != newer.RawLastWriteTime || FreeSpace != newer.FreeSpace || TotalSpace != newer.TotalSpace ||
+                       (!IsPlainFolder && Size != newer.Size);
+        if (!changed)
+            return false;
+
+        Name = newer.Name;
+        Path = newer.Path;
+        Type = newer.Type;
+        Format = newer.Format;
+        Image = newer.Image;
+        CreationTime = newer.CreationTime;
+        LastWriteTime = newer.LastWriteTime;
+        RawLastWriteTime = newer.RawLastWriteTime;
+        FreeSpace = newer.FreeSpace;
+        TotalSpace = newer.TotalSpace;
+        if (!IsPlainFolder)
+            Size = newer.Size;
+        return true;
+    }
+
+    // The size of a folder is only known after the user asks for it, so a refresh must not erase it.
+    private bool IsPlainFolder => IsDirectory && !IsDrive;
 }

@@ -12,9 +12,9 @@ public interface IFileDeletionService
     /// </summary>
     bool SupportsRecycleBin(string path);
 
-    bool MoveToRecycleBin(string path, out string error);
+    bool MoveToRecycleBin(string path, out string? error);
 
-    bool DeletePermanently(string path, out string error);
+    bool DeletePermanently(string path, out string? error);
 }
 
 public class FileDeletionService : IFileDeletionService
@@ -41,7 +41,7 @@ public class FileDeletionService : IFileDeletionService
         }
     }
 
-    public bool MoveToRecycleBin(string path, out string error)
+    public bool MoveToRecycleBin(string path, out string? error)
     {
         // The shell deletes permanently where there is no bin, so never reach it in that case.
         if (!SupportsRecycleBin(path))
@@ -59,7 +59,7 @@ public class FileDeletionService : IFileDeletionService
         });
     }
 
-    public bool DeletePermanently(string path, out string error) => Delete(path, "Deleted permanently", out error, fullPath =>
+    public bool DeletePermanently(string path, out string? error) => Delete(path, "Deleted permanently", out error, fullPath =>
     {
         if (Directory.Exists(fullPath))
             Directory.Delete(fullPath, recursive: true);
@@ -68,7 +68,7 @@ public class FileDeletionService : IFileDeletionService
         return null;
     });
 
-    private bool Delete(string path, string details, out string error, Func<string, string?> action)
+    private bool Delete(string path, string details, out string? error, Func<string, string?> action)
     {
         if (policy.CanDelete(path, out error))
         {
@@ -83,7 +83,7 @@ public class FileDeletionService : IFileDeletionService
         }
 
         bool success = error == null;
-        audit.Log(AuditEventType.FileDeleted, path, success ? details : error, success);
+        audit.Log(AuditEventType.FileDeleted, path, error ?? details, success);
         return success;
     }
 }

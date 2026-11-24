@@ -17,7 +17,7 @@ internal class UsedPercent : MultiConverter
             var used = System.Convert.ToDouble(values[1]);
             return total > 0 ? (used / total * 100.0) : 0.0;
         }
-        catch
+        catch (Exception ex) when (ex is FormatException or InvalidCastException or OverflowException)
         {
             return 0.0;
         }

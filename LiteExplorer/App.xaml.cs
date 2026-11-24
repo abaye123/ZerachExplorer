@@ -2,8 +2,6 @@ using LiteExplorer.MVVM.ViewModels;
 using LiteExplorer.MVVM.Views.Windows;
 using LiteExplorer.Services;
 using Microsoft.Extensions.DependencyInjection;
-using System;
-using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Threading;
 
@@ -11,12 +9,22 @@ namespace LiteExplorer;
 
 public partial class App
 {
-    public static IServiceProvider Container { get; private set; }
+    private const int StartupFailureExitCode = 1;
+
+    private bool hasStarted;
 
     public App()
     {
-        SetupExceptionHandling();
-        RegisterServices();
+        DispatcherUnhandledException += OnDispatcherUnhandledException;
+
+        AppDomain.CurrentDomain.UnhandledException += (_, args) =>
+            CrashLogger.LogException(args.ExceptionObject as Exception, $"AppDomain.UnhandledException (IsTerminating: {args.IsTerminating})");
+
+        TaskScheduler.UnobservedTaskException += (_, args) =>
+        {
+            CrashLogger.LogException(args.Exception, "TaskScheduler.UnobservedTaskException");
+            args.SetObserved();
+        };
     }
 
     protected override void OnStartup(StartupEventArgs e)
@@ -29,57 +37,31 @@ public partial class App
             return;
         }
 
-        var configService = Container.GetService<IConfigurationService>();
-        var pathPolicy = Container.GetService<IPathPolicy>();
-        if (configService != null && pathPolicy != null)
-        {
-            configService.ApplyToPolicy(pathPolicy);
-            KioskController.Instance.Configure(configService.Configuration);
-        }
+        var services = new ServiceCollection();
+        ConfigureServices(services);
+        var provider = services.BuildServiceProvider();
 
-        Container.GetService<MainWindow>()?.Show();
-    }
+        var configuration = provider.GetRequiredService<IConfigurationService>();
+        configuration.ApplyToPolicy(provider.GetRequiredService<IPathPolicy>());
+        KioskController.Instance.Configure(configuration.Configuration);
+        LogLimits.Apply(configuration.Configuration);
 
-    private void SetupExceptionHandling()
-    {
-        DispatcherUnhandledException += OnDispatcherUnhandledException;
-
-        AppDomain.CurrentDomain.UnhandledException += (sender, args) =>
-        {
-            if (args.ExceptionObject is Exception ex)
-            {
-                CrashLogger.LogException(ex, $"AppDomain.UnhandledException (IsTerminating: {args.IsTerminating})");
-            }
-        };
-
-        TaskScheduler.UnobservedTaskException += (sender, args) =>
-        {
-            CrashLogger.LogException(args.Exception, "TaskScheduler.UnobservedTaskException");
-            args.SetObserved();
-        };
+        provider.GetRequiredService<MainWindow>().Show();
+        hasStarted = true;
     }
 
     private void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
     {
         CrashLogger.LogException(e.Exception, "DispatcherUnhandledException");
-
-        try
-        {
-            string message = $"אירעה שגיאה בלתי צפויה במערכת:\n{e.Exception.Message}\n\nפרטי השגיאה נרשמו לקובץ יומן:\n{CrashLogger.LogFilePath}";
-            MessageBox.Show(message, "שגיאת מערכת", MessageBoxButton.OK, MessageBoxImage.Error, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
-        }
-        catch
-        {
-        }
-
         e.Handled = true;
-    }
 
-    private static void RegisterServices()
-    {
-        var services = new ServiceCollection();
-        ConfigureServices(services);
-        Container = services.BuildServiceProvider();
+        MessageBox.Show(
+            $"אירעה שגיאה בלתי צפויה במערכת:\n{e.Exception.Message}\n\nפרטי השגיאה נרשמו לקובץ יומן:\n{CrashLogger.LogFilePath}",
+            "שגיאת מערכת", MessageBoxButton.OK, MessageBoxImage.Error, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
+
+        // Without a main window there is nothing to continue with, only an invisible process.
+        if (!hasStarted)
+            Shutdown(StartupFailureExitCode);
     }
 
     internal static void ConfigureServices(IServiceCollection services)
@@ -88,15 +70,23 @@ public partial class App
         // Constructed explicitly: the container would inject an empty extension list.
         services.AddSingleton<IPathPolicy>(_ => new PathPolicy());
         services.AddSingleton<IAuditService>(_ => AuditService.Instance);
+        services.AddSingleton<IDeviceNotificationService>(_ => DeviceNotificationService.Instance);
+        services.AddSingleton<ISessionService>(_ => SessionService.Instance);
         services.AddSingleton<IFileTransferService, FileTransferService>();
         services.AddSingleton<IFileDeletionService, FileDeletionService>();
+        services.AddSingleton<IFileRenameService, FileRenameService>();
         services.AddSingleton<IDriveEjectService, DriveEjectService>();
-        services.AddSingleton<MainWindowViewModel>();
-        services.AddSingleton<MainWindow>(provider => new()
-        {
-            DataContext = provider.GetService<MainWindowViewModel>()
-        });
+        services.AddSingleton<IClipboardService, ClipboardService>();
+        services.AddSingleton<IDialogService, DialogService>();
+        services.AddSingleton<IDirectoryLoader, DirectoryLoader>();
+        services.AddSingleton<ExplorerServices>();
 
         services.AddTransient<TabContentViewModel>();
+        services.AddSingleton<MainWindowViewModel>(provider => new(provider.GetRequiredService<TabContentViewModel>));
+        services.AddSingleton<MainWindow>(provider =>
+            new(provider.GetRequiredService<IConfigurationService>(), provider.GetRequiredService<IPathPolicy>())
+            {
+                DataContext = provider.GetRequiredService<MainWindowViewModel>()
+            });
     }
 }

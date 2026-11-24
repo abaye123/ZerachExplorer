@@ -130,7 +130,7 @@ public class FileTransferService : IFileTransferService
             : policy.CanCopyFile(source, targetDirectory, out reason);
         if (!permitted)
         {
-            Fail(context, source, name, reason);
+            Fail(context, source, name, reason!);
             return;
         }
 

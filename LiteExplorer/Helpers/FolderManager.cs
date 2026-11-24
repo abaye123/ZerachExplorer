@@ -12,14 +12,14 @@ namespace LiteExplorer.Helpers;
 
 public static class FolderManager
 {
-    private static readonly ConcurrentDictionary<string, ImageSource> FolderIconCache = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly ConcurrentDictionary<string, ImageSource?> FolderIconCache = new(StringComparer.OrdinalIgnoreCase);
 
-    public static ImageSource GetImageSource(string directory, ItemState folderType)
+    public static ImageSource? GetImageSource(string directory, ItemState folderType)
     {
         return GetImageSource(directory, new Size(20, 20), folderType);
     }
 
-    public static ImageSource GetImageSource(string directory, Size size, ItemState folderType)
+    public static ImageSource? GetImageSource(string directory, Size size, ItemState folderType)
     {
         bool isDrive = !string.IsNullOrEmpty(directory) && Path.GetPathRoot(directory) == directory;
         string cacheKey = isDrive 
@@ -46,7 +46,7 @@ public static class FolderManager
 
                 return bitmapSource;
             }
-            catch
+            catch (Exception ex) when (ex is System.Runtime.InteropServices.ExternalException or ArgumentException)
             {
                 return null;
             }

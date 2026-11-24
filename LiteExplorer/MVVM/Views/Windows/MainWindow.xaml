@@ -45,7 +45,7 @@
                      Height="32"
                      Padding="10,4,10,0"
                      DockPanel.Dock="Top"
-                     Icon="/Assets/app.ico"
+                     Icon="../../../Assets/app.ico"
                      UseSnapLayout="True" />
 
         <!-- Windows 11 Style Status Bar -->
@@ -89,7 +89,7 @@
                              Width="140"
                              Height="4"
                              VerticalAlignment="Center"
-                             Value="{Binding ProgressPercent}">
+                             Value="{Binding ProgressPercent, Mode=OneWay}">
                     <ProgressBar.Style>
                         <Style TargetType="ProgressBar"
                                BasedOn="{StaticResource {x:Type ProgressBar}}">

@@ -38,7 +38,7 @@ public static class SecurityHelper
 
             return CryptographicOperations.FixedTimeEquals(actualHashBytes, expectedHashBytes);
         }
-        catch
+        catch (Exception ex) when (ex is FormatException or CryptographicException or ArgumentException)
         {
             return false;
         }

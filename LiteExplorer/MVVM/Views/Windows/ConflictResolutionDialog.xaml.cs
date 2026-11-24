@@ -20,42 +20,22 @@ public partial class ConflictResolutionDialog : Window
 
     private void PopulateFileInfo(string existingPath, string incomingPath)
     {
-        var sizeConverter = new BytesToNormalSize();
+        TxtExistingInfo.Text = Describe(existingPath);
+        TxtIncomingInfo.Text = Describe(incomingPath);
+    }
 
+    private static string Describe(string path)
+    {
         try
         {
-            if (File.Exists(existingPath))
-            {
-                var fi = new FileInfo(existingPath);
-                string sizeStr = sizeConverter.Convert(fi.Length, typeof(string), null, null)?.ToString() ?? $"{fi.Length} Bytes";
-                TxtExistingInfo.Text = $"גודל: {sizeStr} | עודכן: {fi.LastWriteTime:dd/MM/yyyy HH:mm}";
-            }
-            else
-            {
-                TxtExistingInfo.Text = "הקובץ אינו זמין לקריאה.";
-            }
+            var info = new FileInfo(path);
+            return info.Exists
+                ? $"גודל: {BytesToNormalSize.FormatBytes(info.Length)} | עודכן: {info.LastWriteTime:dd/MM/yyyy HH:mm}"
+                : "הקובץ אינו זמין לקריאה.";
         }
-        catch
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            TxtExistingInfo.Text = "שגיאה בקריאת פרטי הקובץ.";
-        }
-
-        try
-        {
-            if (File.Exists(incomingPath))
-            {
-                var fi = new FileInfo(incomingPath);
-                string sizeStr = sizeConverter.Convert(fi.Length, typeof(string), null, null)?.ToString() ?? $"{fi.Length} Bytes";
-                TxtIncomingInfo.Text = $"גודל: {sizeStr} | עודכן: {fi.LastWriteTime:dd/MM/yyyy HH:mm}";
-            }
-            else
-            {
-                TxtIncomingInfo.Text = "הקובץ אינו זמין לקריאה.";
-            }
-        }
-        catch
-        {
-            TxtIncomingInfo.Text = "שגיאה בקריאת פרטי הקובץ.";
+            return "שגיאה בקריאת פרטי הקובץ.";
         }
     }
 
@@ -91,7 +71,7 @@ public partial class ConflictResolutionDialog : Window
         Close();
     }
 
-    public static ConflictResolutionResult Prompt(Window owner, string fileName, string existingPath, string incomingPath)
+    public static ConflictResolutionResult Prompt(Window? owner, string fileName, string existingPath, string incomingPath)
     {
         var dlg = new ConflictResolutionDialog(fileName, existingPath, incomingPath);
         if (owner != null)

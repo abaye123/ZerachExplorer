@@ -18,7 +18,7 @@ public class KioskController : IKioskController
         PreventAppExit = configuration.PreventAppExit;
     }
 
-    public void ApplyKioskWindowSettings(Window window)
+    public void ApplyKioskWindowSettings(Window? window)
     {
         if (window == null) return;
 
@@ -43,7 +43,7 @@ public class KioskController : IKioskController
             true);
     }
 
-    public bool HandleWindowClosing(Window window, CancelEventArgs e, Func<bool> authenticateAdmin)
+    public bool HandleWindowClosing(Window? window, CancelEventArgs e, Func<bool>? authenticateAdmin)
     {
         if (!PreventAppExit)
         {

@@ -1,8 +1,6 @@
 using LiteExplorer.Infrastructure.Commands;
 using LiteExplorer.MVVM.ViewModels.Base;
-using Microsoft.Extensions.DependencyInjection;
 using System.Collections.ObjectModel;
-using System.Linq;
 using System.Windows;
 using System.Windows.Input;
 
@@ -10,64 +8,69 @@ namespace LiteExplorer.MVVM.ViewModels;
 
 internal class MainWindowViewModel : ViewModel
 {
+    private readonly Func<TabContentViewModel> createTab;
     private string mainWindowTitle = "זרח אקספלורר";
+    private TabContentViewModel? currentTab;
+
+    public MainWindowViewModel(Func<TabContentViewModel> createTab)
+    {
+        this.createTab = createTab;
+        CloseAppCmd = new ActionCommand(_ => CloseMainWindow());
+        AddTabCmd = new ActionCommand(_ => AddTab());
+        CloseTabCmd = new ActionCommand(p => CloseTab(p as TabContentViewModel ?? CurrentTab));
+        AddTab();
+    }
+
     public string MainWindowTitle
     {
         get => mainWindowTitle;
         set => SetValue(ref mainWindowTitle, value);
     }
 
-    private TabContentViewModel currentTab;
-    public TabContentViewModel CurrentTab
+    public TabContentViewModel? CurrentTab
     {
         get => currentTab;
         set => SetValue(ref currentTab, value);
     }
 
-    public ObservableCollection<TabContentViewModel> Tabs { get; set; } = new();
+    public ObservableCollection<TabContentViewModel> Tabs { get; } = new();
 
     public ICommand CloseAppCmd { get; }
     public ICommand AddTabCmd { get; }
     public ICommand CloseTabCmd { get; }
 
-    public MainWindowViewModel()
+    /// <summary>Opens a folder without leaving one the user is already working in.</summary>
+    public void OpenInAvailableTab(string path)
     {
-        var initialTab = CreateTabViewModel();
-        Tabs.Add(initialTab);
-        CurrentTab = initialTab;
-
-        CloseAppCmd = new ActionCommand(_ => CloseMainWindow());
-        AddTabCmd = new ActionCommand(OnAddTabCmdExecuted);
-        CloseTabCmd = new ActionCommand(OnCloseTabCmdExecuted);
+        var tab = CurrentTab is { TabPath: null } home ? home : AddTab();
+        tab.Open(path);
     }
-
-    private static TabContentViewModel CreateTabViewModel() =>
-        App.Container?.GetService<TabContentViewModel>() ?? new TabContentViewModel();
 
     // Application.Shutdown ignores a cancelled Closing event and would bypass exit protection.
     private static void CloseMainWindow() => Application.Current.MainWindow?.Close();
 
-    private void OnAddTabCmdExecuted(object p)
+    private TabContentViewModel AddTab()
     {
-        var newTab = CreateTabViewModel();
-        Tabs.Add(newTab);
-        CurrentTab = newTab;
+        var tab = createTab();
+        Tabs.Add(tab);
+        CurrentTab = tab;
+        tab.Start();
+        return tab;
     }
 
-    private void OnCloseTabCmdExecuted(object p)
+    private void CloseTab(TabContentViewModel? tab)
     {
-        var closeTab = (p as TabContentViewModel) ?? CurrentTab;
-        if (closeTab != null && Tabs.Contains(closeTab))
-        {
-            if (Tabs.Count == 1)
-            {
-                CloseMainWindow();
-                return;
-            }
+        if (tab == null || !Tabs.Contains(tab))
+            return;
 
-            closeTab.Dispose();
-            Tabs.Remove(closeTab);
-            CurrentTab = Tabs.LastOrDefault();
+        if (Tabs.Count == 1)
+        {
+            CloseMainWindow();
+            return;
         }
+
+        tab.Dispose();
+        Tabs.Remove(tab);
+        CurrentTab = Tabs.LastOrDefault();
     }
 }

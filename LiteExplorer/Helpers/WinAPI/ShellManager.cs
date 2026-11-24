@@ -31,7 +31,7 @@ public static class ShellManager
         });
     }
 
-    public static Icon GetIcon(string path, ItemType type, IconSize iconSize, ItemState state)
+    public static Icon? GetIcon(string path, ItemType type, IconSize iconSize, ItemState state)
     {
         var attributes = (uint)(type == ItemType.Folder ? FileAttribute.Directory : FileAttribute.File);
         var flags = (uint)(ShellAttribute.Icon | ShellAttribute.UseFileAttributes);

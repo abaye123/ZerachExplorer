@@ -1,3 +1,4 @@
+using LiteExplorer.MVVM.Models;
 using System;
 using System.IO;
 using System.Text;
@@ -8,15 +9,42 @@ public static class CrashLogger
 {
     private static readonly object LogLock = new();
 
-    public static string LogDirectory => Path.Combine(
+    private const long MaxTotalBytes = 2 * 1024 * 1024;
+
+    private static RollingLog log = CreateLog(DefaultDirectory);
+
+    private static string DefaultDirectory => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "ZerachExplorer",
-        "logs"
-    );
+        "logs");
 
-    public static string LogFilePath => Path.Combine(LogDirectory, "crash.log");
+    public static string LogDirectory { get; private set; } = DefaultDirectory;
 
-    public static void LogException(Exception ex, string context = null)
+    public static string LogFilePath => log.CurrentPath;
+
+    public static void SetRetention(int days)
+    {
+        try
+        {
+            log.SetLimits(days, MaxTotalBytes);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            LogException(ex, "Applying crash log limits");
+        }
+    }
+
+    /// <summary>Keeps automated tests away from the real user logs.</summary>
+    internal static void Redirect(string directory)
+    {
+        LogDirectory = directory;
+        log = CreateLog(directory);
+    }
+
+    private static RollingLog CreateLog(string directory) =>
+        new(directory, "crash", AppConfiguration.DefaultLogRetentionDays, MaxTotalBytes);
+
+    public static void LogException(Exception? ex, string? context = null)
     {
         if (ex == null) return;
 
@@ -24,11 +52,6 @@ public static class CrashLogger
         {
             lock (LogLock)
             {
-                if (!Directory.Exists(LogDirectory))
-                {
-                    Directory.CreateDirectory(LogDirectory);
-                }
-
                 var sb = new StringBuilder();
                 sb.AppendLine("================================================================================");
                 sb.AppendLine($"[CRASH REPORT] {DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} (UTC: {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss.fff})");
@@ -46,12 +69,13 @@ public static class CrashLogger
                 sb.AppendLine("================================================================================");
                 sb.AppendLine();
 
-                File.AppendAllText(LogFilePath, sb.ToString(), Encoding.UTF8);
+                log.Append(sb.ToString());
             }
         }
-        catch
+        catch (Exception secondary)
         {
-            // Suppress secondary exceptions inside the crash handler.
+            // Nowhere left to report: the log itself failed.
+            System.Diagnostics.Debug.WriteLine(secondary);
         }
     }
 
@@ -63,17 +87,13 @@ public static class CrashLogger
         {
             lock (LogLock)
             {
-                if (!Directory.Exists(LogDirectory))
-                {
-                    Directory.CreateDirectory(LogDirectory);
-                }
-
                 string entry = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [{level}] {message}{Environment.NewLine}";
-                File.AppendAllText(LogFilePath, entry, Encoding.UTF8);
+                log.Append(entry);
             }
         }
-        catch
+        catch (Exception secondary)
         {
+            System.Diagnostics.Debug.WriteLine(secondary);
         }
     }
 
@@ -88,7 +108,7 @@ public static class CrashLogger
         {
             sb.AppendLine($"{indent}StackTrace:");
             using var reader = new StringReader(ex.StackTrace);
-            string line;
+            string? line;
             while ((line = reader.ReadLine()) != null)
             {
                 sb.AppendLine($"{indent}  {line}");

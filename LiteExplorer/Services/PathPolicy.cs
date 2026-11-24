@@ -2,6 +2,7 @@ using LiteExplorer.Helpers.WinAPI;
 using LiteExplorer.MVVM.Models;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 
@@ -75,7 +76,7 @@ public class PathPolicy : IPathPolicy
         }
     }
 
-    public PathPolicy(IEnumerable<string> customAllowedExtensions = null)
+    public PathPolicy(IEnumerable<string>? customAllowedExtensions = null)
     {
         allowedExtensions = new HashSet<string>(
             customAllowedExtensions ?? DefaultAllowedExtensions,
@@ -109,7 +110,7 @@ public class PathPolicy : IPathPolicy
     /// <summary>
     /// Blocks that apply even to explicitly approved drives and folders.
     /// </summary>
-    private bool IsDriveHardBlocked(DriveInfo drive, out string reason)
+    private bool IsDriveHardBlocked(DriveInfo drive, [NotNullWhen(true)] out string? reason)
     {
         reason = null;
         if (drive == null)
@@ -123,7 +124,7 @@ public class PathPolicy : IPathPolicy
         {
             driveRoot = EnsureTrailingSeparator(drive.RootDirectory?.FullName ?? drive.Name);
         }
-        catch
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             driveRoot = EnsureTrailingSeparator(drive.Name);
         }
@@ -156,8 +157,9 @@ public class PathPolicy : IPathPolicy
                 }
             }
         }
-        catch
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
+            // An empty or disconnected drive has no readable volume to identify.
         }
 
         try
@@ -170,11 +172,12 @@ public class PathPolicy : IPathPolicy
                 return true;
             }
         }
-        catch
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
+            // An empty or disconnected drive has no readable volume to identify.
         }
 
-        string serialNumber = Interop.GetVolumeSerialNumber(driveRoot);
+        string? serialNumber = Interop.GetVolumeSerialNumber(driveRoot);
         if (!string.IsNullOrEmpty(serialNumber) && BlockedVolumeSerialNumbers.Contains(serialNumber))
         {
             reason = "הגישה לכונן זה נחסמה לפי מזהה אמצעי האחסון.";
@@ -184,13 +187,13 @@ public class PathPolicy : IPathPolicy
         return false;
     }
 
-    public bool IsDriveAllowed(DriveInfo drive, out string reason)
+    public bool IsDriveAllowed(DriveInfo drive, [NotNullWhen(false)] out string? reason)
     {
         if (IsDriveHardBlocked(drive, out reason))
             return false;
 
         string driveRoot = EnsureTrailingSeparator(drive.Name);
-        string serialNumber = Interop.GetVolumeSerialNumber(driveRoot);
+        string? serialNumber = Interop.GetVolumeSerialNumber(driveRoot);
         bool isExplicit = AllowedDriveRoots.Contains(driveRoot) ||
                           (!string.IsNullOrEmpty(serialNumber) && AllowedVolumeSerialNumbers.Contains(serialNumber));
         if (isExplicit)
@@ -218,8 +221,9 @@ public class PathPolicy : IPathPolicy
         {
             allDrives = DriveInfo.GetDrives();
         }
-        catch
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
+            CrashLogger.LogException(ex, "Listing drives");
             yield break;
         }
 
@@ -232,7 +236,7 @@ public class PathPolicy : IPathPolicy
         }
     }
 
-    public bool TryNormalizePath(string rawPath, out string normalizedPath, out string reason)
+    public bool TryNormalizePath(string rawPath, [NotNullWhen(true)] out string? normalizedPath, [NotNullWhen(false)] out string? reason)
     {
         normalizedPath = null;
         reason = null;
@@ -317,7 +321,7 @@ public class PathPolicy : IPathPolicy
         return false;
     }
 
-    private bool ValidateLocation(string normalizedPath, out string reason)
+    private bool ValidateLocation(string normalizedPath, [NotNullWhen(false)] out string? reason)
     {
         reason = null;
 
@@ -361,14 +365,14 @@ public class PathPolicy : IPathPolicy
         if (!canonicalPath.StartsWith(@"\\", StringComparison.Ordinal))
             return false;
 
-        string root = EnsureTrailingSeparator(Path.GetPathRoot(path));
+        string root = EnsureTrailingSeparator(Path.GetPathRoot(path)!);
         string share = Interop.GetFinalPath(root);
         string expected = EnsureTrailingSeparator(share) + path.Substring(root.Length);
         return share.StartsWith(@"\\", StringComparison.Ordinal) &&
                string.Equals(expected.TrimEnd('\\'), canonicalPath.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase);
     }
 
-    private bool ValidateReparsePoint(string path, out string finalResolvedPath, out string reason)
+    private bool ValidateReparsePoint(string path, out string finalResolvedPath, [NotNullWhen(false)] out string? reason)
     {
         finalResolvedPath = path;
         reason = null;
@@ -378,7 +382,7 @@ public class PathPolicy : IPathPolicy
             !string.Equals(canonicalPath, path, StringComparison.OrdinalIgnoreCase) &&
             !IsOnMappedShare(path, canonicalPath))
         {
-            if (!TryNormalizePath(canonicalPath, out string normalizedCanonical, out reason))
+            if (!TryNormalizePath(canonicalPath, out string? normalizedCanonical, out reason))
             {
                 reason = $"הקישור מצביע ליעד בלתי חוקי: {reason}";
                 return false;
@@ -405,7 +409,7 @@ public class PathPolicy : IPathPolicy
                     return false;
                 }
 
-                if (!TryNormalizePath(target.FullName, out string targetNormalized, out reason))
+                if (!TryNormalizePath(target.FullName, out string? targetNormalized, out reason))
                 {
                     reason = $"יעד הקישור אינו חוקי: {reason}";
                     return false;
@@ -446,9 +450,11 @@ public class PathPolicy : IPathPolicy
                 return (attr & (FileAttributes.Hidden | FileAttributes.System)) != 0;
             }
         }
-        catch
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
         {
-            return false;
+            // Unknown attributes must not open a hidden location.
+            CrashLogger.LogMessage($"Attributes of {path} are unreadable: {ex.Message}", "WARN");
+            return true;
         }
         return false;
     }
@@ -467,14 +473,16 @@ public class PathPolicy : IPathPolicy
                 dir = dir.Parent;
             }
         }
-        catch
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
         {
-            return false;
+            // Unknown attributes must not open a hidden location.
+            CrashLogger.LogMessage($"Attributes of {path} are unreadable: {ex.Message}", "WARN");
+            return true;
         }
         return false;
     }
 
-    public bool CanNavigate(string path, out string reason)
+    public bool CanNavigate(string path, [NotNullWhen(false)] out string? reason)
     {
         if (Permissions != null && !Permissions.CanList)
         {
@@ -482,7 +490,7 @@ public class PathPolicy : IPathPolicy
             return false;
         }
 
-        if (!TryNormalizePath(path, out string fullPath, out reason))
+        if (!TryNormalizePath(path, out string? fullPath, out reason))
             return false;
 
         if (Profile == KioskProfile.Controlled)
@@ -517,7 +525,7 @@ public class PathPolicy : IPathPolicy
         return true;
     }
 
-    public bool CanListDirectory(string directoryPath, out string reason)
+    public bool CanListDirectory(string directoryPath, [NotNullWhen(false)] out string? reason)
     {
         reason = null;
         if (Permissions != null && !Permissions.CanList)
@@ -552,7 +560,7 @@ public class PathPolicy : IPathPolicy
         }
     }
 
-    public bool CanListFile(string filePath, out string reason)
+    public bool CanListFile(string filePath, [NotNullWhen(false)] out string? reason)
     {
         reason = null;
         if (Permissions != null && !Permissions.CanList)
@@ -587,7 +595,7 @@ public class PathPolicy : IPathPolicy
         }
     }
 
-    public bool CanOpenFile(string filePath, out string reason)
+    public bool CanOpenFile(string filePath, [NotNullWhen(false)] out string? reason)
     {
         if (Permissions != null && !Permissions.CanOpen)
         {
@@ -595,7 +603,7 @@ public class PathPolicy : IPathPolicy
             return false;
         }
 
-        if (!TryNormalizePath(filePath, out string fullPath, out reason))
+        if (!TryNormalizePath(filePath, out string? fullPath, out reason))
             return false;
 
         if (!ValidateLocation(fullPath, out reason))
@@ -616,7 +624,7 @@ public class PathPolicy : IPathPolicy
             return false;
         }
 
-        string ext = Path.GetExtension(resolvedPath)?.ToLowerInvariant();
+        string? ext = Path.GetExtension(resolvedPath)?.ToLowerInvariant();
         if (string.IsNullOrEmpty(ext) || !allowedExtensions.Contains(ext))
         {
             reason = $"סוג הקובץ '{ext}' אינו מאושר לפתיחה במערכת.";
@@ -626,12 +634,12 @@ public class PathPolicy : IPathPolicy
         return true;
     }
 
-    public bool CanPreviewFile(string filePath, out string reason)
+    public bool CanPreviewFile(string filePath, [NotNullWhen(false)] out string? reason)
     {
         if (!CanOpenFile(filePath, out reason))
             return false;
 
-        string ext = Path.GetExtension(filePath)?.ToLowerInvariant();
+        string? ext = Path.GetExtension(filePath)?.ToLowerInvariant();
         if (string.IsNullOrEmpty(ext) || !PreviewWhitelistExtensions.Contains(ext))
         {
             reason = $"תצוגה מקדימה חסומה עבור סוג הקובץ '{ext}' (מותר רק מסמכי וורד/לימוד מאושרים).";
@@ -641,7 +649,7 @@ public class PathPolicy : IPathPolicy
         return true;
     }
 
-    public bool CanDelete(string path, out string reason)
+    public bool CanDelete(string path, [NotNullWhen(false)] out string? reason)
     {
         if (Permissions != null && !Permissions.CanDelete)
         {
@@ -649,7 +657,7 @@ public class PathPolicy : IPathPolicy
             return false;
         }
 
-        if (!TryNormalizePath(path, out string fullPath, out reason))
+        if (!TryNormalizePath(path, out string? fullPath, out reason))
             return false;
 
         var root = Path.GetPathRoot(fullPath);
@@ -675,7 +683,7 @@ public class PathPolicy : IPathPolicy
         return true;
     }
 
-    public bool CanRename(string oldPath, string newPath, out string reason)
+    public bool CanRename(string oldPath, string newPath, [NotNullWhen(false)] out string? reason)
     {
         if (Permissions != null && !Permissions.CanRename)
         {
@@ -683,10 +691,10 @@ public class PathPolicy : IPathPolicy
             return false;
         }
 
-        if (!TryNormalizePath(oldPath, out string fullOld, out reason))
+        if (!TryNormalizePath(oldPath, out string? fullOld, out reason))
             return false;
 
-        if (!TryNormalizePath(newPath, out string fullNew, out reason))
+        if (!TryNormalizePath(newPath, out string? fullNew, out reason))
             return false;
 
         if (!ValidateLocation(fullOld, out reason))
@@ -714,7 +722,7 @@ public class PathPolicy : IPathPolicy
         return true;
     }
 
-    public bool CanCopyFile(string sourcePath, string destinationDirectory, out string reason)
+    public bool CanCopyFile(string sourcePath, string destinationDirectory, [NotNullWhen(false)] out string? reason)
     {
         if (Permissions != null && !Permissions.CanCopyFrom)
         {
@@ -742,7 +750,7 @@ public class PathPolicy : IPathPolicy
         }
 
         string destinationFile = Path.Combine(destinationDirectory, fileName);
-        if (!TryNormalizePath(destinationFile, out string fullDest, out reason))
+        if (!TryNormalizePath(destinationFile, out string? fullDest, out reason))
             return false;
 
         if (!ValidateLocation(fullDest, out reason))
@@ -751,7 +759,7 @@ public class PathPolicy : IPathPolicy
         return true;
     }
 
-    public bool CanMoveFile(string sourcePath, string destinationDirectory, out string reason)
+    public bool CanMoveFile(string sourcePath, string destinationDirectory, [NotNullWhen(false)] out string? reason)
     {
         if (Permissions != null && (!Permissions.CanCopyFrom || !Permissions.CanCopyTo || !Permissions.CanDelete))
         {
@@ -765,7 +773,7 @@ public class PathPolicy : IPathPolicy
         return CanCopyFile(sourcePath, destinationDirectory, out reason);
     }
 
-    public bool CanTransferDirectory(string sourceDirectory, string destinationDirectory, bool isMove, out string reason)
+    public bool CanTransferDirectory(string sourceDirectory, string destinationDirectory, bool isMove, [NotNullWhen(false)] out string? reason)
     {
         if (Permissions != null && !Permissions.CanCopyFrom)
         {
@@ -802,7 +810,7 @@ public class PathPolicy : IPathPolicy
         }
 
         string targetDir = Path.Combine(destinationDirectory, dirName);
-        if (!TryNormalizePath(targetDir, out string fullTarget, out reason))
+        if (!TryNormalizePath(targetDir, out string? fullTarget, out reason))
             return false;
 
         if (!ValidateLocation(fullTarget, out reason))
@@ -819,7 +827,7 @@ public class PathPolicy : IPathPolicy
         return true;
     }
 
-    public bool CanCreateDirectory(string parentDirectory, string newDirectoryName, out string reason)
+    public bool CanCreateDirectory(string parentDirectory, string newDirectoryName, [NotNullWhen(false)] out string? reason)
     {
         reason = null;
 
@@ -855,7 +863,7 @@ public class PathPolicy : IPathPolicy
             return false;
 
         string target = Path.Combine(parentDirectory, trimmedName);
-        if (!TryNormalizePath(target, out string fullTarget, out reason))
+        if (!TryNormalizePath(target, out string? fullTarget, out reason))
             return false;
 
         if (!ValidateLocation(fullTarget, out reason))
@@ -864,7 +872,7 @@ public class PathPolicy : IPathPolicy
         return true;
     }
 
-    public bool CanEjectDrive(string drivePath, out string reason)
+    public bool CanEjectDrive(string drivePath, [NotNullWhen(false)] out string? reason)
     {
         reason = null;
         if (string.IsNullOrWhiteSpace(drivePath))
@@ -873,7 +881,7 @@ public class PathPolicy : IPathPolicy
             return false;
         }
 
-        string root = Path.GetPathRoot(drivePath);
+        string? root = Path.GetPathRoot(drivePath);
         if (string.IsNullOrWhiteSpace(root) || root.Length < 2)
         {
             reason = "אות הכונן אינה תקינה.";

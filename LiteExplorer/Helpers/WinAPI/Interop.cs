@@ -1,6 +1,7 @@
 using Microsoft.Win32.SafeHandles;
 using System;
 using System.ComponentModel;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -74,35 +75,19 @@ public static class Interop
         out uint lpBytesReturned,
         IntPtr lpOverlapped);
 
-    [DllImport("cfgmgr32.dll", EntryPoint = "CM_Request_Device_EjectW", CharSet = CharSet.Unicode)]
-    public static extern int CM_Request_Device_Eject(
-        uint dnDevInst,
-        out int pVetoType,
-        StringBuilder pszVetoName,
-        uint ulNameLength,
-        uint ulFlags);
-
     /// <summary>
     /// Retrieves the volume serial number in standard format (e.g. "ABCD-1234").
     /// </summary>
-    public static string GetVolumeSerialNumber(string rootPath)
+    public static string? GetVolumeSerialNumber(string rootPath)
     {
-        try
-        {
-            if (string.IsNullOrWhiteSpace(rootPath)) return null;
-            if (!rootPath.EndsWith('\\')) rootPath += "\\";
+        if (string.IsNullOrWhiteSpace(rootPath)) return null;
+        if (!rootPath.EndsWith('\\')) rootPath += "\\";
 
-            var volumeName = new StringBuilder(261);
-            var fileSystemName = new StringBuilder(261);
-            if (GetVolumeInformation(rootPath, volumeName, volumeName.Capacity, out uint serialNumber, out _, out _, fileSystemName, fileSystemName.Capacity))
-            {
-                return $"{serialNumber >> 16:X4}-{serialNumber & 0xFFFF:X4}";
-            }
-        }
-        catch
-        {
-        }
-        return null;
+        var volumeName = new StringBuilder(261);
+        var fileSystemName = new StringBuilder(261);
+        return GetVolumeInformation(rootPath, volumeName, volumeName.Capacity, out uint serialNumber, out _, out _, fileSystemName, fileSystemName.Capacity)
+            ? $"{serialNumber >> 16:X4}-{serialNumber & 0xFFFF:X4}"
+            : null;
     }
 
     /// <summary>
@@ -112,47 +97,41 @@ public static class Interop
     {
         if (string.IsNullOrWhiteSpace(path)) return path;
 
-        try
-        {
-            using var handle = CreateFile(
-                path,
-                FILE_READ_EA,
-                FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-                IntPtr.Zero,
-                OPEN_EXISTING,
-                FILE_FLAG_BACKUP_SEMANTICS,
-                IntPtr.Zero);
+        using var handle = CreateFile(
+            path,
+            FILE_READ_EA,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+            IntPtr.Zero,
+            OPEN_EXISTING,
+            FILE_FLAG_BACKUP_SEMANTICS,
+            IntPtr.Zero);
 
-            if (handle != null && !handle.IsInvalid)
-            {
-                var sb = new StringBuilder(1024);
-                uint res = GetFinalPathNameByHandle(handle, sb, (uint)sb.Capacity, 0);
-                if (res > 0)
-                {
-                    string result = sb.ToString();
-                    if (result.StartsWith(@"\\?\UNC\", StringComparison.OrdinalIgnoreCase))
-                    {
-                        return @"\\" + result.Substring(8);
-                    }
-                    if (result.StartsWith(@"\\?\", StringComparison.OrdinalIgnoreCase))
-                    {
-                        return result.Substring(4);
-                    }
-                    return result;
-                }
-            }
-        }
-        catch
+        if (handle.IsInvalid)
+            return path;
+
+        var buffer = new StringBuilder(1024);
+        uint length = GetFinalPathNameByHandle(handle, buffer, (uint)buffer.Capacity, 0);
+        if (length >= buffer.Capacity)
         {
+            // Too small: the returned value is the required size.
+            buffer = new StringBuilder((int)length + 1);
+            length = GetFinalPathNameByHandle(handle, buffer, (uint)buffer.Capacity, 0);
         }
 
-        return path;
+        if (length == 0)
+            return path;
+
+        string result = buffer.ToString();
+        if (result.StartsWith(@"\\?\UNC\", StringComparison.OrdinalIgnoreCase))
+            return @"\\" + result.Substring(8);
+
+        return result.StartsWith(@"\\?\", StringComparison.OrdinalIgnoreCase) ? result.Substring(4) : result;
     }
 
     /// <summary>
     /// Safely locks, dismounts, and ejects a removable volume via Windows Storage IOCTLs.
     /// </summary>
-    public static bool EjectVolume(string driveLetter, out string errorMessage)
+    public static bool EjectVolume(string driveLetter, [NotNullWhen(false)] out string? errorMessage)
     {
         errorMessage = null;
         if (string.IsNullOrWhiteSpace(driveLetter))

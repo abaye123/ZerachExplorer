@@ -12,14 +12,14 @@ namespace LiteExplorer.Helpers;
 
 public static class FileManager
 {
-    private static readonly ConcurrentDictionary<string, ImageSource> IconCache = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly ConcurrentDictionary<string, ImageSource?> IconCache = new(StringComparer.OrdinalIgnoreCase);
 
-    public static ImageSource GetImageSource(string filename)
+    public static ImageSource? GetImageSource(string filename)
     {
         return GetImageSource(filename, new Size(20, 20));
     }
 
-    public static ImageSource GetImageSource(string filename, Size size)
+    public static ImageSource? GetImageSource(string filename, Size size)
     {
         string extension = string.IsNullOrWhiteSpace(filename) ? "" : Path.GetExtension(filename).ToLowerInvariant();
         string cacheKey = $"{extension}_{size.Width}x{size.Height}";
@@ -44,7 +44,7 @@ public static class FileManager
 
                 return bitmapSource;
             }
-            catch
+            catch (Exception ex) when (ex is System.Runtime.InteropServices.ExternalException or ArgumentException)
             {
                 return null;
             }

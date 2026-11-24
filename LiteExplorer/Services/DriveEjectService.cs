@@ -25,20 +25,20 @@ public class DriveEjectService : IDriveEjectService
             return false;
         }
 
-        if (!pathPolicy.CanEjectDrive(drivePath, out string reason))
+        if (!pathPolicy.CanEjectDrive(drivePath, out string? reason))
         {
             userMessage = reason;
             return false;
         }
 
-        string root = Path.GetPathRoot(drivePath)?.TrimEnd('\\', '/');
+        string? root = Path.GetPathRoot(drivePath)?.TrimEnd('\\', '/');
         if (string.IsNullOrEmpty(root))
         {
             userMessage = "אות הכונן אינה חוקית.";
             return false;
         }
 
-        if (Interop.EjectVolume(root, out string error))
+        if (Interop.EjectVolume(root, out string? error))
         {
             userMessage = $"כונן {root} הוצא בהצלחה. כעת ניתן לנתק את ההתקן בבטחה.";
             return true;

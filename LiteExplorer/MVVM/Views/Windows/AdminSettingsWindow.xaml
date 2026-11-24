@@ -79,7 +79,8 @@
                                 Padding="14">
                             <StackPanel>
                                 <CheckBox x:Name="ChkKioskMode" Content="מצב קיוסק: מסך מלא" Margin="0,0,0,5" />
-                                <CheckBox x:Name="ChkPreventExit" Content="יציאה מהתוכנה רק עם סיסמת מנהל" Margin="0,0,0,12" />
+                                <CheckBox x:Name="ChkPreventExit" Content="יציאה מהתוכנה רק עם סיסמת מנהל" Margin="0,0,0,5" />
+                                <CheckBox x:Name="ChkUsbDialog" Content="הצעה לפתוח כונן USB כשהוא מתחבר" Margin="0,0,0,12" />
                                 <TextBlock Text="הרשאות פעולה (Path Permissions)"
                                            FontWeight="SemiBold"
                                            FontSize="14"
@@ -222,6 +223,27 @@
                         </ListBox.ItemTemplate>
                     </ListBox>
                 </Grid>
+            </TabItem>
+
+            <!-- Log Tab -->
+            <TabItem Header="יומן">
+                <StackPanel Margin="14,12" MaxWidth="460" HorizontalAlignment="Left">
+                    <TextBlock Text="שמירת יומן הפעולות"
+                               FontWeight="SemiBold"
+                               FontSize="14"
+                               Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                    <TextBlock Text="רישומים נמחקים כשהם ישנים ממספר הימים, או מוקדם יותר אם היומן הגיע לנפח המרבי."
+                               TextWrapping="Wrap"
+                               FontSize="12"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               Margin="0,2,0,15" />
+
+                    <TextBlock Text="מספר ימים לשמירה (1-365):" Margin="0,0,0,4" />
+                    <TextBox x:Name="TxtLogDays" Width="120" HorizontalAlignment="Left" Margin="0,0,0,10" Padding="6,4" />
+
+                    <TextBlock Text="נפח מרבי במגה-בייט (1-500):" Margin="0,0,0,4" />
+                    <TextBox x:Name="TxtLogSize" Width="120" HorizontalAlignment="Left" Padding="6,4" />
+                </StackPanel>
             </TabItem>
 
             <!-- Password Tab -->

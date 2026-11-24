@@ -1,5 +1,6 @@
 using LiteExplorer.Services;
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Windows;
 
@@ -10,7 +11,7 @@ public partial class NewFolderDialog : Window
     private readonly string parentDirectory;
     private readonly IPathPolicy pathPolicy;
 
-    public string FolderName { get; private set; }
+    public string FolderName { get; private set; } = string.Empty;
 
     public NewFolderDialog(string parentDirectory, IPathPolicy pathPolicy)
     {
@@ -27,7 +28,7 @@ public partial class NewFolderDialog : Window
 
     private void OnConfirmClick(object sender, RoutedEventArgs e)
     {
-        string name = TxtFolderName.Text?.Trim();
+        string? name = TxtFolderName.Text?.Trim();
 
         if (string.IsNullOrWhiteSpace(name))
         {
@@ -35,7 +36,7 @@ public partial class NewFolderDialog : Window
             return;
         }
 
-        if (!pathPolicy.CanCreateDirectory(parentDirectory, name, out string reason))
+        if (!pathPolicy.CanCreateDirectory(parentDirectory, name, out string? reason))
         {
             ShowError(reason ?? "יצירת התיקייה אינה מורשית בנתיב זה.");
             return;
@@ -65,7 +66,7 @@ public partial class NewFolderDialog : Window
         TxtError.Visibility = Visibility.Visible;
     }
 
-    public static bool Prompt(Window owner, string parentDirectory, IPathPolicy pathPolicy, out string createdFolderName)
+    public static bool Prompt(Window? owner, string parentDirectory, IPathPolicy pathPolicy, [NotNullWhen(true)] out string? createdFolderName)
     {
         createdFolderName = null;
         var dlg = new NewFolderDialog(parentDirectory, pathPolicy);

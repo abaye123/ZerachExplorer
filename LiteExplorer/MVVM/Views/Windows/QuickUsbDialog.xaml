@@ -21,7 +21,7 @@
         </Grid.RowDefinitions>
 
         <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,10">
-            <ui:SymbolIcon Symbol="Usb24" FontSize="24" Margin="0,0,10,0" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+            <ui:SymbolIcon Symbol="UsbStick24" FontSize="24" Margin="0,0,10,0" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
             <TextBlock Text="התקן USB זוהה בהצלחה"
                        FontSize="16"
                        FontWeight="SemiBold"

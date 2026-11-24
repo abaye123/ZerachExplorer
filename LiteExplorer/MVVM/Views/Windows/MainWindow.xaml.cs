@@ -1,8 +1,9 @@
+using LiteExplorer.Helpers.WinAPI;
 using LiteExplorer.MVVM.Models;
+using LiteExplorer.MVVM.ViewModels;
 using LiteExplorer.Services;
-using Microsoft.Extensions.DependencyInjection;
-using System;
 using System.ComponentModel;
+using System.IO;
 using System.Windows;
 using System.Windows.Interop;
 
@@ -10,59 +11,63 @@ namespace LiteExplorer.MVVM.Views.Windows;
 
 public partial class MainWindow
 {
-    private const int WM_DEVICECHANGE = 0x0219;
-    private const int DBT_DEVICEARRIVAL = 0x8000;
-    private const int DBT_DEVICEREMOVECOMPLETE = 0x8004;
+    private readonly IConfigurationService configuration;
+    private readonly IPathPolicy policy;
 
-    public MainWindow()
+    public MainWindow(IConfigurationService configuration, IPathPolicy policy)
     {
+        this.configuration = configuration;
+        this.policy = policy;
         InitializeComponent();
-        Loaded += OnWindowLoaded;
+        Loaded += (_, _) => KioskController.Instance.ApplyKioskWindowSettings(this);
         Closing += OnWindowClosing;
     }
 
-    private void OnWindowLoaded(object sender, RoutedEventArgs e)
-    {
-        KioskController.Instance.ApplyKioskWindowSettings(this);
-    }
-
-    private void OnWindowClosing(object sender, CancelEventArgs e)
-    {
-        KioskController.Instance.HandleWindowClosing(this, e, () => AuthenticateExit());
-    }
-
-    private bool AuthenticateExit()
-    {
-        var config = App.Container.GetRequiredService<IConfigurationService>();
-        return AdminPasswordDialog.Prompt(config, this);
-    }
+    private void OnWindowClosing(object? sender, CancelEventArgs e) =>
+        KioskController.Instance.HandleWindowClosing(this, e, () => AdminPasswordDialog.Prompt(configuration, this));
 
     protected override void OnSourceInitialized(EventArgs e)
     {
         base.OnSourceInitialized(e);
         if (PresentationSource.FromVisual(this) is HwndSource source)
-        {
             source.AddHook(WndProc);
-        }
     }
 
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
-        if (msg == WM_DEVICECHANGE)
+        if (msg == DeviceMessage.Id && DeviceMessage.TryParse(wParam, lParam, out var arrived, out var roots))
         {
-            int wp = wParam.ToInt32();
-            if (wp == DBT_DEVICEARRIVAL)
-            {
-                AuditService.Instance.Log(AuditEventType.UsbConnected, "USB", "Removable device arrival detected", true);
-                DeviceNotificationService.Instance.NotifyDeviceChanged();
-            }
-            else if (wp == DBT_DEVICEREMOVECOMPLETE)
-            {
-                AuditService.Instance.Log(AuditEventType.UsbDisconnected, "USB", "Removable device removal detected", true);
-                SessionService.Instance.CleanTempFiles();
-                DeviceNotificationService.Instance.NotifyDeviceChanged();
-            }
+            // Opening a window inside the message would block the sender.
+            Dispatcher.InvokeAsync(() => OnVolumesChanged(arrived, roots));
         }
         return IntPtr.Zero;
+    }
+
+    private void OnVolumesChanged(bool arrived, IReadOnlyList<string> roots)
+    {
+        foreach (var root in roots)
+            AuditService.Instance.Log(arrived ? AuditEventType.UsbConnected : AuditEventType.UsbDisconnected, root);
+
+        if (!arrived)
+            SessionService.Instance.CleanTempFiles();
+
+        DeviceNotificationService.Instance.NotifyDeviceChanged();
+
+        if (arrived && configuration.Configuration.ShowUsbDialog)
+        {
+            foreach (var root in roots)
+                OfferToOpen(root);
+        }
+    }
+
+    private void OfferToOpen(string root)
+    {
+        var drive = new DriveInfo(root);
+        if (drive.DriveType != DriveType.Removable || !policy.IsDriveAllowed(drive, out _))
+            return;
+
+        var dialog = new QuickUsbDialog(root, DriveDescriber.GetLabel(drive)) { Owner = this };
+        if (dialog.ShowDialog() == true)
+            ((MainWindowViewModel)DataContext).OpenInAvailableTab(root);
     }
 }

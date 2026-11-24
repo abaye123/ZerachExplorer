@@ -1,205 +1,193 @@
 using LiteExplorer.Helpers;
-using LiteExplorer.Helpers.Enums;
-using LiteExplorer.Helpers.WinAPI;
 using LiteExplorer.Infrastructure.Commands;
-using LiteExplorer.Infrastructure.Converters;
 using LiteExplorer.MVVM.Models;
 using LiteExplorer.MVVM.ViewModels.Base;
-using LiteExplorer.MVVM.Views.Windows;
 using LiteExplorer.Services;
-using Microsoft.Extensions.DependencyInjection;
-using System;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
-using System.Windows;
 using System.Windows.Data;
 using System.Windows.Input;
-using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 
 namespace LiteExplorer.MVVM.ViewModels;
 
-internal class TabContentViewModel : ViewModel, IDisposable
+/// <summary>One explorer tab: where it is, what it shows and how it is sorted and filtered.</summary>
+internal sealed class TabContentViewModel : ViewModel, IExplorerTab, IDisposable
 {
-    private const long NotApplicableSpaceSentinel = 12345667658675846L;
+    private readonly ExplorerServices services;
+    private readonly IPathPolicy policy;
+    private readonly IDialogService dialogs;
+    private readonly Dispatcher dispatcher = Dispatcher.CurrentDispatcher;
+    private readonly FolderWatcher watcher;
+    private readonly SidebarViewModel sidebar;
+    private readonly PreviewViewModel preview;
+    private readonly FileOperationsViewModel operations;
+    // Kept so that WPF does not discard the sort and filter while the tab is hidden.
+    private readonly ListCollectionView itemsView;
+    private readonly List<FileSystemObject> selectedItems = new();
 
-    #region Private fields
+    private CancellationTokenSource scan = new();
+    private string? loadedPath;
+    private bool hasLoaded;
+    private bool disposed;
 
-    private readonly IPathPolicy pathPolicy;
+    private string? tabTitle;
+    private string? tabPath;
+    private string addressText = string.Empty;
+    private bool isAddressBarEditing;
+    private FileSystemObject? currentFileSystemObject;
+    private double progressPercent;
+    private bool isLoading;
+    private string searchText = string.Empty;
+    private bool isPreviewPaneVisible;
+    private ViewMode currentViewMode = ViewMode.Details;
 
-    private readonly IDriveEjectService driveEjectService;
-    private readonly IConfigurationService configurationService;
-    private readonly object scanLock = new();
-
-    private CancellationTokenSource currentScanCts;
-
-    private long currentScanId;
-
-    private const string DropEffectFormat = "Preferred DropEffect";
-    private readonly IFileTransferService fileTransferService;
-    private readonly IFileDeletionService fileDeletionService;
-    private readonly List<FileSystemObject> selectedFileSystemObjects = new();
-
-    private FileSystemWatcher currentWatcher;
-    private readonly DispatcherTimer refreshDebounceTimer;
-
-    #endregion
-
-    #region Properties
-
-    private string tabTitle;
-    public string TabTitle
+    public TabContentViewModel(ExplorerServices services)
     {
-        get => tabTitle;
-        set => SetValue(ref tabTitle, value);
+        this.services = services;
+        policy = services.Policy;
+        dialogs = services.Dialogs;
+
+        watcher = new FolderWatcher(Reload);
+        sidebar = new SidebarViewModel(policy);
+        preview = new PreviewViewModel(policy);
+        operations = new FileOperationsViewModel(this, services);
+        itemsView = (ListCollectionView)CollectionViewSource.GetDefaultView(FileSystemObjects);
+
+        OpenCmd = new ActionCommand(p => Open(p?.ToString()));
+        BackCmd = new ActionCommand(_ => GoUp(), _ => TabPath != null);
+        BackHome = new ActionCommand(_ => GoHome());
+        NavigateBreadcrumbCmd = new ActionCommand(p => Open(p as string));
+        RefreshCmd = new ActionCommand(_ => Reload());
+        ToggleAddressBarEditCmd = new ActionCommand(_ => BeginAddressEdit());
+        CommitAddressCmd = new ActionCommand(_ => CommitAddress());
+        CancelAddressCmd = new ActionCommand(_ => IsAddressBarEditing = false);
+        ClearSearchCmd = new ActionCommand(_ => SearchText = string.Empty);
+        TogglePreviewPaneCmd = new ActionCommand(_ => IsPreviewPaneVisible = !IsPreviewPaneVisible);
+        ToggleViewModeCmd = new ActionCommand(_ => CurrentViewMode = IsDetailsView ? ViewMode.Tiles : ViewMode.Details);
+        OpenAboutCmd = new ActionCommand(_ => dialogs.ShowAbout());
+        OpenAdminCmd = new ActionCommand(_ => OpenAdmin());
+
+        services.Devices.DeviceChanged += OnDeviceChanged;
+        services.Devices.DriveReleasing += OnDriveReleasing;
+        services.Devices.DriveReleaseFinished += OnDriveReleaseFinished;
+        services.Session.SessionReset += OnSessionReset;
+
+        ApplySorting();
+        UpdateBreadcrumbs();
     }
 
-    private string tabPath;
-    public string TabPath
+    public ICommand OpenCmd { get; }
+    public ICommand BackCmd { get; }
+    public ICommand BackHome { get; }
+    public ICommand NavigateBreadcrumbCmd { get; }
+    public ICommand RefreshCmd { get; }
+    public ICommand ToggleAddressBarEditCmd { get; }
+    public ICommand CommitAddressCmd { get; }
+    public ICommand CancelAddressCmd { get; }
+    public ICommand ClearSearchCmd { get; }
+    public ICommand TogglePreviewPaneCmd { get; }
+    public ICommand ToggleViewModeCmd { get; }
+    public ICommand OpenAboutCmd { get; }
+    public ICommand OpenAdminCmd { get; }
+
+    public ICommand CopyCmd => operations.CopyCmd;
+    public ICommand CutCmd => operations.CutCmd;
+    public ICommand PasteCmd => operations.PasteCmd;
+    public ICommand DeleteCmd => operations.DeleteCmd;
+    public ICommand RenameCmd => operations.RenameCmd;
+    public ICommand CreateDirectoryCmd => operations.CreateDirectoryCmd;
+    public ICommand EjectDriveCmd => operations.EjectDriveCmd;
+    public ICommand CalculateFolderSizeCmd => operations.CalculateFolderSizeCmd;
+
+    public ObservableCollection<FileSystemObject> FileSystemObjects { get; } = new();
+    public ObservableCollection<BreadcrumbItem> Breadcrumbs { get; } = new();
+    public ObservableCollection<FileSystemObject> SidebarQuickAccess => sidebar.QuickAccess;
+    public ObservableCollection<FileSystemObject> SidebarDrives => sidebar.Drives;
+    public FilePreviewInfo PreviewInfo => preview.Info;
+    public IReadOnlyList<FileSystemObject> SelectedFileSystemObjects => selectedItems;
+
+    public SortColumn CurrentSortColumn { get; private set; } = SortColumn.Name;
+    public ListSortDirection CurrentSortDirection { get; private set; } = ListSortDirection.Ascending;
+
+    public string? TabTitle
+    {
+        get => tabTitle;
+        private set => SetValue(ref tabTitle, value);
+    }
+
+    public string? TabPath
     {
         get => tabPath;
-        set
+        internal set
         {
             if (SetValue(ref tabPath, value))
             {
-                TabCommand = tabPath;
-                UpdateBreadcrumbs(tabPath);
-
-                InvalidateCommandStates();
+                UpdateBreadcrumbs();
+                CommandManager.InvalidateRequerySuggested();
             }
         }
     }
 
-    private string tabCommand;
-    public string TabCommand
+    /// <summary>What is being typed; the tab stays where it is until the text is committed.</summary>
+    public string AddressText
     {
-        get => tabCommand;
-        set => SetValue(ref tabCommand, value);
+        get => addressText;
+        set => SetValue(ref addressText, value);
     }
 
-    private FileSystemObject currentFileSystemObject;
-    public FileSystemObject CurrentFileSystemObject
-    {
-        get => currentFileSystemObject;
-        set
-        {
-            if (SetValue(ref currentFileSystemObject, value))
-            {
-                InvalidateCommandStates();
-                if (IsPreviewPaneVisible)
-                {
-                    LoadPreview(currentFileSystemObject);
-                }
-            }
-        }
-    }
-
-    private double progressPercent;
-    public double ProgressPercent
-    {
-        get => progressPercent;
-        set => SetValue(ref progressPercent, value);
-    }
-
-    private bool isLoading;
-    public bool IsLoading
-    {
-        get => isLoading;
-        set => SetValue(ref isLoading, value);
-    }
-
-    public ObservableCollection<FileSystemObject> FileSystemObjects { get; set; } = new();
-    public ObservableCollection<FileSystemObject> SidebarQuickAccess { get; } = new();
-    public ObservableCollection<FileSystemObject> SidebarDrives { get; } = new();
-    public IReadOnlyList<FileSystemObject> SelectedFileSystemObjects => selectedFileSystemObjects;
-
-    public ObservableCollection<BreadcrumbItem> Breadcrumbs { get; } = new();
-
-    private bool isAddressBarEditing;
     public bool IsAddressBarEditing
     {
         get => isAddressBarEditing;
         set => SetValue(ref isAddressBarEditing, value);
     }
 
-    private string searchText = string.Empty;
+    public FileSystemObject? CurrentFileSystemObject
+    {
+        get => currentFileSystemObject;
+        set
+        {
+            if (SetValue(ref currentFileSystemObject, value))
+            {
+                CommandManager.InvalidateRequerySuggested();
+                UpdatePreview();
+            }
+        }
+    }
+
+    public double ProgressPercent
+    {
+        get => progressPercent;
+        private set => SetValue(ref progressPercent, value);
+    }
+
+    public bool IsLoading
+    {
+        get => isLoading;
+        set => SetValue(ref isLoading, value);
+    }
+
     public string SearchText
     {
         get => searchText;
         set
         {
             if (SetValue(ref searchText, value))
-            {
                 ApplyFilter();
-            }
         }
     }
 
-    public SortColumn CurrentSortColumn { get; private set; } = SortColumn.Name;
-    public ListSortDirection CurrentSortDirection { get; private set; } = ListSortDirection.Ascending;
-
-    public FilePreviewInfo PreviewInfo { get; } = new();
-
-    private bool isPreviewPaneVisible;
     public bool IsPreviewPaneVisible
     {
         get => isPreviewPaneVisible;
         set
         {
             if (SetValue(ref isPreviewPaneVisible, value))
-            {
-                if (value)
-                {
-                    LoadPreview(CurrentFileSystemObject);
-                }
-                else
-                {
-                    PreviewInfo.Clear();
-                }
-            }
+                UpdatePreview();
         }
     }
-
-    #endregion
-
-    #region Commands
-
-    public ICommand OpenCmd { get; }
-    public ICommand DeleteCmd { get; }
-    public ICommand RenameCmd { get; }
-    public ICommand CalculateFolderSizeCmd { get; }
-    public ICommand BackCmd { get; }
-
-    public ICommand BackHome { get; }
-
-    public ICommand ResetOtzariaCmd { get; }
-
-    public ICommand OpenAboutCmd { get; }
-    public ICommand OpenAdminCmd { get; }
-    public ICommand CopyCmd { get; }
-
-    public ICommand CutCmd { get; }
-
-    public ICommand PasteCmd { get; }
-
-    public ICommand CreateDirectoryCmd { get; }
-    public ICommand EjectDriveCmd { get; }
-    public ICommand NavigateBreadcrumbCmd { get; }
-    public ICommand ToggleAddressBarEditCmd { get; }
-    public ICommand ClearSearchCmd { get; }
-    public ICommand TogglePreviewPaneCmd { get; }
-    public ICommand RefreshCmd { get; }
-    public ICommand ToggleViewModeCmd { get; }
-
-    public ICommand ResetSessionCmd { get; }
-
-    private ViewMode currentViewMode = ViewMode.Details;
 
     public ViewMode CurrentViewMode
     {
@@ -215,1669 +203,338 @@ internal class TabContentViewModel : ViewModel, IDisposable
     }
 
     public bool IsDetailsView => CurrentViewMode == ViewMode.Details;
-
     public bool IsTilesView => CurrentViewMode == ViewMode.Tiles;
 
-    #endregion
-
-    #region Constructor & Disposal
-
-    [ActivatorUtilitiesConstructor]
-    public TabContentViewModel(IPathPolicy? pathPolicy = null, IDriveEjectService? driveEjectService = null, IConfigurationService? configurationService = null)
-        : this(pathPolicy, driveEjectService, configurationService, autoLoad: true)
+    /// <summary>Shows the home screen. Separate from construction so that creating a tab reads no drives.</summary>
+    public void Start()
     {
-    }
-
-    internal TabContentViewModel(IPathPolicy? pathPolicy, IDriveEjectService? driveEjectService, IConfigurationService? configurationService, bool autoLoad)
-    {
-        this.pathPolicy = pathPolicy ?? App.Container?.GetService<IPathPolicy>() ?? new PathPolicy();
-
-        this.driveEjectService = driveEjectService ?? App.Container?.GetService<IDriveEjectService>() ?? new DriveEjectService(this.pathPolicy);
-        this.configurationService = configurationService ?? App.Container?.GetService<IConfigurationService>() ?? new ConfigurationService();
-        fileTransferService = App.Container?.GetService<IFileTransferService>() ?? new FileTransferService(this.pathPolicy, AuditService.Instance);
-        fileDeletionService = App.Container?.GetService<IFileDeletionService>() ?? new FileDeletionService(this.pathPolicy, AuditService.Instance);
-
-        OpenCmd = new ActionCommand(OnOpenCmdExecuted);
-
-        DeleteCmd = new ActionCommand(OnDeletePath, CanDeleteExecute);
-        RenameCmd = new ActionCommand(OnRenameCmdExecuted, CanRenameExecute);
-        BackCmd = new ActionCommand(OnBackCmdExecuted, CanBackCmdExecute);
-        BackHome = new ActionCommand(OnBackHomeExecuted);
-
-        CalculateFolderSizeCmd = new ActionCommand(OnCalculateFolderSizeExecuted);
-
-        ResetOtzariaCmd = new ActionCommand(OnResetOtzariaCmdExecuted);
-
-        OpenAboutCmd = new ActionCommand(OnOpenAboutCmdExecuted);
-        OpenAdminCmd = new ActionCommand(OnOpenAdminCmdExecuted);
-        CopyCmd = new ActionCommand(OnCopyCmdExecuted, CanCopyExecute);
-
-        CutCmd = new ActionCommand(OnCutCmdExecuted, CanCutExecute);
-
-        PasteCmd = new ActionCommand(OnPasteCmdExecuted, CanPasteExecute);
-
-        CreateDirectoryCmd = new ActionCommand(OnCreateDirectoryCmdExecuted, CanCreateDirectoryExecute);
-        EjectDriveCmd = new ActionCommand(OnEjectDriveCmdExecuted, CanEjectDriveExecute);
-        NavigateBreadcrumbCmd = new ActionCommand(OnNavigateBreadcrumbExecuted);
-        ToggleAddressBarEditCmd = new ActionCommand(_ => IsAddressBarEditing = !IsAddressBarEditing);
-        ClearSearchCmd = new ActionCommand(_ => SearchText = string.Empty);
-        TogglePreviewPaneCmd = new ActionCommand(_ => IsPreviewPaneVisible = !IsPreviewPaneVisible);
-        RefreshCmd = new ActionCommand(_ => OpenCmd.Execute(TabPath));
-        ToggleViewModeCmd = new ActionCommand(_ => CurrentViewMode = CurrentViewMode == ViewMode.Details ? ViewMode.Tiles : ViewMode.Details);
-        ResetSessionCmd = new ActionCommand(_ => SessionService.Instance.ResetSession());
-        SessionService.Instance.SessionReset += OnSessionReset;
-
-        refreshDebounceTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(350) };
-        refreshDebounceTimer.Tick += (s, e) =>
-        {
-            refreshDebounceTimer.Stop();
-            OpenCmd.Execute(TabPath);
-        };
-
-        DeviceNotificationService.Instance.DeviceChanged += OnDeviceNotification;
-        DeviceNotificationService.Instance.DriveReleasing += OnDriveReleasing;
-        DeviceNotificationService.Instance.DriveReleaseFinished += OnDriveReleaseFinished;
-
-        UpdateBreadcrumbs(TabPath);
-
         RefreshSidebar();
-
-        if (autoLoad)
-        {
-            OpenCmd.Execute(TabPath);
-        }
+        Reload();
     }
 
     public void Dispose()
     {
-        DeviceNotificationService.Instance.DeviceChanged -= OnDeviceNotification;
-        DeviceNotificationService.Instance.DriveReleasing -= OnDriveReleasing;
-        DeviceNotificationService.Instance.DriveReleaseFinished -= OnDriveReleaseFinished;
-        SessionService.Instance.SessionReset -= OnSessionReset;
-        StopWatcher();
-        refreshDebounceTimer?.Stop();
-
-        lock (scanLock)
-        {
-            currentScanCts?.Cancel();
-            currentScanCts?.Dispose();
-            currentScanCts = null;
-        }
+        disposed = true;
+        services.Devices.DeviceChanged -= OnDeviceChanged;
+        services.Devices.DriveReleasing -= OnDriveReleasing;
+        services.Devices.DriveReleaseFinished -= OnDriveReleaseFinished;
+        services.Session.SessionReset -= OnSessionReset;
+        watcher.Dispose();
+        preview.Dispose();
+        scan.Cancel();
+        scan.Dispose();
     }
-    #endregion
-    #region Command State Evaluation (CanExecute)
-
-    private bool CanCopyExecute(object p) => (pathPolicy?.Permissions?.CanCopyFrom ?? true) && HasSelectedOrCurrentItem(p);
-
-    private bool CanCutExecute(object p) => (pathPolicy?.Permissions?.CanCopyFrom ?? true) && (pathPolicy?.Permissions?.CanDelete ?? true) && HasSelectedOrCurrentItem(p);
-
-    private bool CanPasteExecute(object p)
-    {
-        if (pathPolicy?.Permissions != null && !pathPolicy.Permissions.CanCopyTo)
-            return false;
-
-        if (string.IsNullOrEmpty(TabPath) || !Directory.Exists(TabPath))
-            return false;
-
-        return HasClipboardData();
-    }
-
-    private bool CanDeleteExecute(object p) => (pathPolicy?.Permissions?.CanDelete ?? true) && HasSelectedOrCurrentItem(p);
-
-    private bool CanRenameExecute(object p)
-    {
-        if (pathPolicy?.Permissions != null && !pathPolicy.Permissions.CanRename)
-            return false;
-
-        if (p != null) return true;
-        if (selectedFileSystemObjects.Count == 1) return true;
-        return selectedFileSystemObjects.Count == 0 && CurrentFileSystemObject != null && !string.IsNullOrEmpty(CurrentFileSystemObject.Path);
-    }
-
-    private bool CanCreateDirectoryExecute(object p)
-    {
-        if (pathPolicy?.Permissions != null && !pathPolicy.Permissions.CanCreateDirectory)
-            return false;
-
-        return !string.IsNullOrEmpty(TabPath) && Directory.Exists(TabPath);
-    }
-
-    private bool CanEjectDriveExecute(object p)
-    {
-        if (p is string pathStr && !string.IsNullOrEmpty(pathStr))
-        {
-            return IsRemovableDrivePath(pathStr);
-        }
-
-        if (CurrentFileSystemObject != null && CurrentFileSystemObject.IsRemovableDrive)
-            return true;
-
-        return selectedFileSystemObjects.Any(o => o.IsRemovableDrive);
-    }
-
-    private static bool IsRemovableDrivePath(string path)
-    {
-        try
-        {
-            var root = Path.GetPathRoot(path);
-            if (string.IsNullOrEmpty(root))
-                return false;
-            return new DriveInfo(root).DriveType == DriveType.Removable;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    private bool HasSelectedOrCurrentItem(object p)
-    {
-        if (p != null && !string.IsNullOrEmpty(p.ToString()))
-            return true;
-
-        if (selectedFileSystemObjects.Count > 0)
-            return true;
-
-        return CurrentFileSystemObject != null && !string.IsNullOrEmpty(CurrentFileSystemObject.Path);
-    }
-
-    private static bool HasClipboardData()
-    {
-        try
-        {
-            return Clipboard.ContainsFileDropList();
-        }
-        catch (System.Runtime.InteropServices.ExternalException)
-        {
-            // Another process holds the clipboard.
-            return false;
-        }
-    }
-
-    private static void InvalidateCommandStates()
-    {
-        try
-        {
-            if (Application.Current?.Dispatcher != null && !Application.Current.Dispatcher.CheckAccess())
-            {
-                Application.Current.Dispatcher.InvokeAsync(CommandManager.InvalidateRequerySuggested);
-            }
-            else
-            {
-                CommandManager.InvalidateRequerySuggested();
-            }
-        }
-        catch
-        {
-        }
-    }
-
-    #endregion
-
-    #region Selection
 
     public void SetSelectedItems(IEnumerable<FileSystemObject> items)
     {
-        selectedFileSystemObjects.Clear();
-        if (items != null)
-        {
-            selectedFileSystemObjects.AddRange(items);
-        }
-        InvalidateCommandStates();
-    }
-
-    private List<string> GetSelectedOrCurrentPaths(object commandParameter = null)
-    {
-        var paramPath = commandParameter?.ToString()?.Trim();
-        if (!string.IsNullOrEmpty(paramPath))
-        {
-            return new List<string> { paramPath };
-        }
-
-        if (selectedFileSystemObjects.Count > 0)
-        {
-            return selectedFileSystemObjects
-                .Where(x => !string.IsNullOrEmpty(x.Path))
-                .Select(x => x.Path)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToList();
-        }
-
-        if (!string.IsNullOrEmpty(CurrentFileSystemObject?.Path))
-        {
-            return new List<string> { CurrentFileSystemObject.Path };
-        }
-
-        return new List<string>();
-    }
-
-    #endregion
-
-    #region File Transfer Handlers (Copy, Cut, Paste)
-
-    private List<string> FilterClipboardPaths(IEnumerable<string> rawPaths)
-    {
-        var allowed = new List<string>();
-        foreach (var p in rawPaths)
-        {
-            if (Directory.Exists(p))
-            {
-                if (pathPolicy.CanNavigate(p, out _))
-                    allowed.Add(p);
-            }
-            else if (File.Exists(p))
-            {
-                string ext = Path.GetExtension(p)?.ToLowerInvariant() ?? string.Empty;
-                if (pathPolicy.TryNormalizePath(p, out _, out _) &&
-                    pathPolicy.CanNavigate(Path.GetDirectoryName(p), out _) &&
-                    pathPolicy.AllowedExtensions.Contains(ext))
-                {
-                    allowed.Add(p);
-                }
-            }
-        }
-        return allowed;
-    }
-
-    private void OnCopyCmdExecuted(object p)
-    {
-        if (pathPolicy.Permissions != null && !pathPolicy.Permissions.CanCopyFrom)
-            return;
-
-        PlaceOnClipboard(FilterClipboardPaths(GetSelectedOrCurrentPaths(p)), DragDropEffects.Copy);
-    }
-
-    private void OnCutCmdExecuted(object p)
-    {
-        if (pathPolicy.Permissions != null && (!pathPolicy.Permissions.CanCopyFrom || !pathPolicy.Permissions.CanDelete))
-            return;
-
-        PlaceOnClipboard(FilterClipboardPaths(GetSelectedOrCurrentPaths(p)), DragDropEffects.Move);
-    }
-
-    private static void PlaceOnClipboard(List<string> paths, DragDropEffects effect)
-    {
-        if (paths.Count == 0) return;
-
-        var collection = new System.Collections.Specialized.StringCollection();
-        collection.AddRange(paths.ToArray());
-
-        var data = new DataObject();
-        data.SetFileDropList(collection);
-        data.SetData(DropEffectFormat, new MemoryStream(BitConverter.GetBytes((int)effect)));
-
-        try
-        {
-            Clipboard.SetDataObject(data, copy: true);
-        }
-        catch (System.Runtime.InteropServices.ExternalException ex)
-        {
-            CrashLogger.LogException(ex, "Clipboard write failed");
-            MessageBox.Show("לוח ההעתקה תפוס על ידי תוכנה אחרת. נסה שוב.", "העתקה", MessageBoxButton.OK, MessageBoxImage.Warning, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
-        }
-
-        InvalidateCommandStates();
-    }
-
-    private static List<string> ReadClipboard(out bool isCut)
-    {
-        isCut = false;
-        var paths = new List<string>();
-
-        try
-        {
-            var data = Clipboard.GetDataObject();
-            if (data?.GetData(DataFormats.FileDrop) is not string[] files)
-                return paths;
-
-            paths.AddRange(files.Where(file => !string.IsNullOrWhiteSpace(file)));
-
-            if (data.GetData(DropEffectFormat) is MemoryStream { Length: >= sizeof(int) } stream)
-            {
-                var effect = (DragDropEffects)BitConverter.ToInt32(stream.ToArray(), 0);
-                isCut = (effect & DragDropEffects.Move) != 0 && (effect & DragDropEffects.Copy) == 0;
-            }
-        }
-        catch (System.Runtime.InteropServices.ExternalException ex)
-        {
-            CrashLogger.LogException(ex, "Clipboard read failed");
-        }
-
-        return paths;
-    }
-
-    private async void OnPasteCmdExecuted(object p)
-    {
-        if (string.IsNullOrEmpty(TabPath) || !Directory.Exists(TabPath))
-        {
-            MessageBox.Show("לא ניתן להדביק פריטים במסך הראשי. אנא בחר כונן או תיקייה תחילה.", "הדבקה", MessageBoxButton.OK, MessageBoxImage.Information, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
-            return;
-        }
-
-        if (!pathPolicy.CanNavigate(TabPath, out var navReason))
-        {
-            MessageBox.Show(navReason, "גישה נדחתה", MessageBoxButton.OK, MessageBoxImage.Warning, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
-            return;
-        }
-
-        var sources = ReadClipboard(out bool isCut);
-        if (sources.Count == 0)
-            return;
-
-        string targetDir = TabPath;
-        IsLoading = true;
-        try
-        {
-            var result = await Task.Run(() => fileTransferService.Transfer(sources, targetDir, isCut, PromptForConflict));
-
-            if (isCut && !result.Cancelled)
-            {
-                try
-                {
-                    Clipboard.Clear();
-                }
-                catch (System.Runtime.InteropServices.ExternalException ex)
-                {
-                    CrashLogger.LogException(ex, "Clipboard clear failed");
-                }
-            }
-
-            OpenTabPath();
-
-            if (result.Errors.Count > 0)
-            {
-                string msg = $"חלק מהקבצים לא הועברו:\n\n{string.Join("\n", result.Errors.Take(5))}";
-                if (result.Errors.Count > 5)
-                    msg += $"\nועוד {result.Errors.Count - 5} שגיאות נוספות.";
-
-                MessageBox.Show(msg, "הודעת העברה", MessageBoxButton.OK, MessageBoxImage.Warning, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
-            }
-        }
-        catch (Exception ex)
-        {
-            CrashLogger.LogException(ex, $"Paste into {targetDir} failed");
-            MessageBox.Show($"ההעברה נכשלה: {ex.Message}", "שגיאה", MessageBoxButton.OK, MessageBoxImage.Error, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
-        }
-        finally
-        {
-            IsLoading = false;
-            InvalidateCommandStates();
-        }
-    }
-
-    private static ConflictResolutionResult PromptForConflict(string fileName, string existingPath, string incomingPath) =>
-        Application.Current.Dispatcher.Invoke(() =>
-            ConflictResolutionDialog.Prompt(Application.Current.MainWindow, fileName, existingPath, incomingPath));
-
-    #endregion
-
-    #region Directory Creation & Device Eject Handlers
-
-    private void OnCreateDirectoryCmdExecuted(object p)
-    {
-        if (string.IsNullOrEmpty(TabPath) || !Directory.Exists(TabPath))
-        {
-            MessageBox.Show("לא ניתן ליצור תיקייה במסך הראשי. אנא בחר כונן או תיקייה תחילה.", "יצירת תיקייה", MessageBoxButton.OK, MessageBoxImage.Information, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
-            return;
-        }
-
-        if (!pathPolicy.CanNavigate(TabPath, out var navReason))
-        {
-            MessageBox.Show(navReason, "גישה נדחתה", MessageBoxButton.OK, MessageBoxImage.Warning, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
-            return;
-        }
-
-        if (NewFolderDialog.Prompt(Application.Current?.MainWindow, TabPath, pathPolicy, out string createdFolderName))
-        {
-            try
-            {
-                string createdPath = Path.Combine(TabPath, createdFolderName);
-                Directory.CreateDirectory(createdPath);
-                AuditService.Instance.Log(AuditEventType.DirectoryCreated, createdPath, "Created directory", true);
-                OpenTabPath();
-            }
-            catch (Exception ex)
-            {
-                CrashLogger.LogException(ex, $"Failed to create folder '{createdFolderName}' in '{TabPath}'");
-                MessageBox.Show($"יצירת התיקייה נכשלה: {ex.Message}", "שגיאה", MessageBoxButton.OK, MessageBoxImage.Error, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
-            }
-        }
-    }
-
-    private void OnEjectDriveCmdExecuted(object p)
-    {
-        string targetDrive = null;
-        if (p is string pathParam && !string.IsNullOrEmpty(pathParam))
-        {
-            targetDrive = Path.GetPathRoot(pathParam);
-        }
-        else if (CurrentFileSystemObject != null && CurrentFileSystemObject.IsRemovableDrive && !string.IsNullOrEmpty(CurrentFileSystemObject.Path))
-        {
-            targetDrive = Path.GetPathRoot(CurrentFileSystemObject.Path);
-        }
-        else if (selectedFileSystemObjects.FirstOrDefault(o => o.IsRemovableDrive) is { } removableSelected)
-        {
-            targetDrive = Path.GetPathRoot(removableSelected.Path);
-        }
-
-        if (string.IsNullOrEmpty(targetDrive))
-        {
-            MessageBox.Show("נא לבחור כונן נשלף להוצאה.", "הוצאת התקן", MessageBoxButton.OK, MessageBoxImage.Information, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
-            return;
-        }
-
-        // Folder watchers in every open tab hold the volume open and would fail the lock.
-        DeviceNotificationService.Instance.NotifyDriveReleasing(targetDrive);
-        bool success;
-        string message;
-        try
-        {
-            success = driveEjectService.EjectDrive(targetDrive, out message);
-        }
-        finally
-        {
-            DeviceNotificationService.Instance.NotifyDriveReleaseFinished(targetDrive);
-        }
-
-        AuditService.Instance.Log(AuditEventType.DriveEjected, targetDrive, message, success);
-        MessageBox.Show(
-            message,
-            "הוצאת התקן USB",
-            MessageBoxButton.OK,
-            success ? MessageBoxImage.Information : MessageBoxImage.Warning,
-            MessageBoxResult.OK,
-            MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
-
-        if (success)
-        {
-            BackHome.Execute(null);
-        }
-    }
-
-    #endregion
-
-    #region Navigation & Execution Handlers
-
-    private void OnOpenCmdExecuted(object p)
-    {
-        string rawPath = p?.ToString()?.Trim();
-
-        // Navigate to Drives list if no path is specified.
-        if (string.IsNullOrEmpty(rawPath))
-        {
-            TabPath = null;
-            OpenTabPath();
-            return;
-        }
-
-        if (Directory.Exists(rawPath))
-        {
-            if (!pathPolicy.CanNavigate(rawPath, out var reason))
-            {
-                MessageBox.Show(reason, "גישה נדחתה", MessageBoxButton.OK, MessageBoxImage.Warning, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
-                return;
-            }
-
-            TabPath = Path.GetFullPath(rawPath);
-            OpenTabPath();
-        }
-        else if (File.Exists(rawPath))
-        {
-            if (!pathPolicy.CanOpenFile(rawPath, out var reason))
-            {
-                AuditService.Instance.Log(AuditEventType.SecurityBlocked, rawPath, reason, false);
-                MessageBox.Show(reason, "גישה נדחתה", MessageBoxButton.OK, MessageBoxImage.Warning, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
-                return;
-            }
-
-            try
-            {
-                var fullFilePath = Path.GetFullPath(rawPath);
-                Process.Start(new ProcessStartInfo(fullFilePath) { UseShellExecute = true });
-                AuditService.Instance.Log(AuditEventType.FileOpened, fullFilePath, "File opened in default application", true);
-            }
-            catch (Win32Exception ex)
-            {
-                CrashLogger.LogException(ex, $"ShellExecute failed for file: {rawPath}");
-                MessageBox.Show(ex.Message, $"Error: {ex.NativeErrorCode}", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
-            catch (Exception ex)
-            {
-                CrashLogger.LogException(ex, $"Failed to open file: {rawPath}");
-                MessageBox.Show(ex.Message, "שגיאה בפתיחת הקובץ", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
-        }
-        else
-        {
-            MessageBox.Show($"הנתיב המבוקש אינו קיים או שאינו נגיש:\n{rawPath}", "שגיאה", MessageBoxButton.OK, MessageBoxImage.Error, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
-        }
-    }
-
-    private void OnDeletePath(object p)
-    {
-        var allowed = new List<string>();
-        var errors = new List<string>();
-
-        foreach (var target in GetSelectedOrCurrentPaths(p))
-        {
-            if (!pathPolicy.CanDelete(target, out var reason))
-                errors.Add($"{Path.GetFileName(target)}: {reason}");
-            else if (!File.Exists(target) && !Directory.Exists(target))
-                errors.Add($"{Path.GetFileName(target)}: הפריט אינו קיים.");
-            else
-                allowed.Add(target);
-        }
-
-        if (allowed.Count > 0)
-        {
-            bool recyclable = allowed.All(fileDeletionService.SupportsRecycleBin);
-            string subject = allowed.Count == 1 ? $"את הפריט:\n{allowed[0]}" : $"{allowed.Count} פריטים";
-            string consequence = recyclable
-                ? "הפריטים יועברו לסל המיחזור."
-                : "שים לב: אין בכונן זה סל מיחזור. המחיקה סופית ולא ניתן יהיה לשחזר!";
-
-            string details = DescribeFolderContents(allowed.Where(Directory.Exists));
-
-            var answer = MessageBox.Show(
-                $"האם אתה בטוח שברצונך למחוק {subject}?\n\n{details}{consequence}",
-                recyclable ? "אישור מחיקה" : "אזהרת מחיקה לצמיתות",
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Warning,
-                MessageBoxResult.No,
-                MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
-            if (answer != MessageBoxResult.Yes)
-                return;
-
-            foreach (var target in allowed)
-            {
-                string error;
-                bool deleted = recyclable
-                    ? fileDeletionService.MoveToRecycleBin(target, out error)
-                    : fileDeletionService.DeletePermanently(target, out error);
-                if (!deleted)
-                    errors.Add($"{Path.GetFileName(target)}: {error}");
-            }
-
-            OpenTabPath();
-            InvalidateCommandStates();
-        }
-
-        if (errors.Count > 0)
-        {
-            MessageBox.Show($"שגיאה במחיקת חלק מהפריטים:\n{string.Join("\n", errors.Take(5))}", "שגיאה במחיקה", MessageBoxButton.OK, MessageBoxImage.Warning, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
-        }
-    }
-
-    private static string DescribeFolderContents(IEnumerable<string> directories)
-    {
-        int files = 0, folders = 0, hidden = 0;
-        bool any = false;
-        var options = new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true, AttributesToSkip = 0 };
-
-        foreach (var directory in directories)
-        {
-            any = true;
-            try
-            {
-                foreach (var info in new DirectoryInfo(directory).EnumerateFileSystemInfos("*", options))
-                {
-                    if ((info.Attributes & (FileAttributes.Hidden | FileAttributes.System)) != 0) hidden++;
-                    if ((info.Attributes & FileAttributes.Directory) != 0) folders++; else files++;
-                }
-            }
-            catch (IOException ex)
-            {
-                CrashLogger.LogException(ex, $"Counting contents of {directory}");
-            }
-        }
-
-        if (!any) return string.Empty;
-
-        string text = $"תוכן התיקיות: {files} קבצים, {folders} תתי-תיקיות.\n";
-        if (hidden > 0)
-            text += $"שים לב: כולל {hidden} פריטים מוסתרים או פריטי מערכת.\n";
-        return text + "\n";
-    }
-
-    private void OnRenameCmdExecuted(object p)
-    {
-        string rawPath = p?.ToString()?.Trim();
-
-        if (string.IsNullOrEmpty(rawPath))
-        {
-            var targets = GetSelectedOrCurrentPaths();
-            if (targets.Count == 1)
-                rawPath = targets[0];
-        }
-
-        if (string.IsNullOrEmpty(rawPath) || !File.Exists(rawPath))
-        {
-            MessageBox.Show("ניתן לשנות שם לקבצים בלבד.", "שגיאה", MessageBoxButton.OK, MessageBoxImage.Error, MessageBoxResult.No, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
-            return;
-        }
-
-        if (!pathPolicy.CanOpenFile(rawPath, out var checkReason))
-        {
-            MessageBox.Show($"לא ניתן לשנות שם לקובץ זה:\n{checkReason}", "גישה נדחתה", MessageBoxButton.OK, MessageBoxImage.Warning, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
-            return;
-        }
-
-        try
-        {
-            var fileInfo = new FileInfo(Path.GetFullPath(rawPath));
-            string currentFileName = Path.GetFileNameWithoutExtension(fileInfo.FullName);
-            string fileExtension = fileInfo.Extension;
-
-            string newFileName = Microsoft.VisualBasic.Interaction.InputBox(
-                "הכנס את השם החדש לקובץ:",
-                "שינוי שם הקובץ",
-                currentFileName
-            );
-
-            if (string.IsNullOrWhiteSpace(newFileName))
-                return;
-
-            newFileName = newFileName.Trim();
-            if (string.Equals(newFileName, currentFileName, StringComparison.OrdinalIgnoreCase))
-            {
-                MessageBox.Show("שם הקובץ לא שונה.", "שינוי שם", MessageBoxButton.OK, MessageBoxImage.Information, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
-                return;
-            }
-
-            char[] invalidChars = Path.GetInvalidFileNameChars();
-            if (newFileName.IndexOfAny(invalidChars) >= 0 ||
-                newFileName.Contains('/') ||
-                newFileName.Contains('\\') ||
-                newFileName.Contains(".."))
-            {
-                MessageBox.Show("שם הקובץ מכיל תווים בלתי חוקיים או ניסיון לניווט נתיב.", "שגיאה", MessageBoxButton.OK, MessageBoxImage.Error, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
-                return;
-            }
-
-            string combinedName = newFileName + fileExtension;
-            string newPath = Path.Combine(fileInfo.DirectoryName, combinedName);
-
-            if (!string.Equals(Path.GetDirectoryName(newPath), fileInfo.DirectoryName, StringComparison.OrdinalIgnoreCase))
-            {
-                MessageBox.Show("ניסיון לעקוף נתיב (Path Traversal) זוהה ונחסם.", "אבטחה", MessageBoxButton.OK, MessageBoxImage.Error, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
-                return;
-            }
-
-            if (!pathPolicy.CanRename(fileInfo.FullName, newPath, out var renameReason))
-            {
-                MessageBox.Show(renameReason, "שגיאת מדיניות", MessageBoxButton.OK, MessageBoxImage.Error, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
-                return;
-            }
-
-            if (File.Exists(newPath))
-            {
-                MessageBox.Show("קובץ עם שם זה כבר קיים.", "שגיאה", MessageBoxButton.OK, MessageBoxImage.Error, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
-                return;
-            }
-
-            File.Move(fileInfo.FullName, newPath);
-
-            MessageBox.Show("השם שונה בהצלחה.", "שינוי שם", MessageBoxButton.OK, MessageBoxImage.Information, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
-            OpenTabPath();
-            InvalidateCommandStates();
-        }
-        catch (Exception ex)
-        {
-            CrashLogger.LogException(ex, $"Rename failed for {rawPath}");
-            MessageBox.Show($"שינוי השם נכשל: {ex.Message}", "שגיאה", MessageBoxButton.OK, MessageBoxImage.Error, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
-        }
-    }
-
-    private async void OnCalculateFolderSizeExecuted(object p)
-    {
-        var targetObj = (p as FileSystemObject) ?? CurrentFileSystemObject;
-        if (targetObj == null || !targetObj.IsDirectory || string.IsNullOrWhiteSpace(targetObj.Path))
-            return;
-
-        if (targetObj.IsCalculatingSize)
-            return;
-
-        targetObj.IsCalculatingSize = true;
-
-        try
-        {
-            long totalBytes = await CalculateDirectorySizeAsync(targetObj.Path);
-            targetObj.Size = totalBytes;
-        }
-        catch (Exception ex)
-        {
-            CrashLogger.LogMessage($"Failed to calculate folder size for {targetObj.Path}: {ex.Message}", "WARN");
-        }
-        finally
-        {
-            targetObj.IsCalculatingSize = false;
-        }
-    }
-
-    public static async Task<long> CalculateDirectorySizeAsync(string directoryPath, CancellationToken token = default)
-    {
-        return await Task.Run(() =>
-        {
-            long size = 0;
-            try
-            {
-                var dir = new DirectoryInfo(directoryPath);
-                if (!dir.Exists) return 0;
-
-                var stack = new Stack<DirectoryInfo>();
-                stack.Push(dir);
-
-                while (stack.Count > 0)
-                {
-                    token.ThrowIfCancellationRequested();
-                    var currentDir = stack.Pop();
-
-                    try
-                    {
-                        foreach (var file in currentDir.EnumerateFiles())
-                        {
-                            token.ThrowIfCancellationRequested();
-                            size += file.Length;
-                        }
-                    }
-                    catch (UnauthorizedAccessException) { }
-                    catch (DirectoryNotFoundException) { }
-                    catch (PathTooLongException) { }
-                    catch (IOException) { }
-
-                    try
-                    {
-                        foreach (var subDir in currentDir.EnumerateDirectories())
-                        {
-                            token.ThrowIfCancellationRequested();
-                            stack.Push(subDir);
-                        }
-                    }
-                    catch (UnauthorizedAccessException) { }
-                    catch (DirectoryNotFoundException) { }
-                    catch (PathTooLongException) { }
-                    catch (IOException) { }
-                }
-            }
-            catch (OperationCanceledException)
-            {
-                throw;
-            }
-            catch
-            {
-            }
-
-            return size;
-        }, token);
-    }
-
-    private bool CanBackCmdExecute(object p) => TabPath != null;
-
-    private void OnBackCmdExecuted(object p)
-    {
-        if (TabPath == null) return;
-
-        var parent = Path.GetDirectoryName(TabPath);
-        if (string.IsNullOrEmpty(parent))
-        {
-            TabPath = null;
-        }
-        else
-        {
-            TabPath = pathPolicy.CanNavigate(parent, out _) ? parent : null;
-        }
-
-        OpenTabPath();
-    }
-
-    private void OnBackHomeExecuted(object p)
-    {
-        TabPath = null;
-        OpenTabPath();
-    }
-
-    private void OnResetOtzariaCmdExecuted(object p)
-    {
-        var filesToDelete = new List<string>
-        {
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), @"com.example\otzaria\tabs.isar"),
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), @"com.example\otzaria\history.isar"),
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), @"com.example\otzaria\bookmarks.isar")
-        };
-
-        DeleteFiles(filesToDelete);
-    }
-
-    private void OnOpenAboutCmdExecuted(object p)
-    {
-        var aboutWindow = new about();
-        aboutWindow.ShowDialog();
-    }
-
-    private void OnOpenAdminCmdExecuted(object p)
-    {
-        if (AdminPasswordDialog.Prompt(configurationService, Application.Current?.MainWindow))
-        {
-            configurationService.ApplyToPolicy(pathPolicy);
-
-            var adminWindow = new AdminSettingsWindow(configurationService, pathPolicy);
-            if (Application.Current?.MainWindow != null)
-            {
-                adminWindow.Owner = Application.Current.MainWindow;
-            }
-
-            if (adminWindow.ShowDialog() == true)
-            {
-                InvalidateCommandStates();
-                OpenCmd.Execute(TabPath);
-            }
-        }
-    }
-
-    #endregion
-
-    #region Private Directory Loading
-
-    private void OpenTabPath()
-    {
-        lock (scanLock)
-        {
-            currentScanCts?.Cancel();
-            currentScanCts?.Dispose();
-            currentScanCts = new CancellationTokenSource();
-        }
-
-        long scanId = Interlocked.Increment(ref currentScanId);
-        var token = currentScanCts.Token;
-
-        string targetPath = TabPath;
-
-        if (targetPath != null && !pathPolicy.CanNavigate(targetPath, out var reason))
-        {
-            MessageBox.Show(reason, "גישה נדחתה", MessageBoxButton.OK, MessageBoxImage.Warning, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
-            TabPath = null;
-            targetPath = null;
-        }
-
-        if (targetPath != null && Path.GetPathRoot(targetPath) == targetPath)
-        {
-            try
-            {
-                var drive = new DriveInfo(targetPath);
-                TabTitle = GetDriveLabel(drive);
-            }
-            catch
-            {
-                TabTitle = targetPath;
-            }
-        }
-        else
-        {
-            TabTitle = string.IsNullOrEmpty(targetPath) ? "בית" : Path.GetFileName(targetPath);
-        }
-
-        UpdateBreadcrumbs(targetPath);
-        StartWatcher(targetPath);
-
-        FileSystemObjects.Clear();
-        ProgressPercent = 0;
-        IsLoading = true;
-
-        _ = LoadDirectoryContentsAsync(targetPath, scanId, token);
-        InvalidateCommandStates();
-    }
-
-    private async Task LoadDirectoryContentsAsync(string targetPath, long scanId, CancellationToken token)
-    {
-        try
-        {
-            await Task.Run(async () =>
-            {
-                if (targetPath == null)
-                {
-                    var visibleDrives = pathPolicy.GetAllowedDrives().ToList();
-                    var driveCount = visibleDrives.Count;
-                    int processedDrives = 0;
-                    var driveBatch = new List<FileSystemObject>();
-
-                    foreach (var drive in visibleDrives)
-                    {
-                        token.ThrowIfCancellationRequested();
-
-                        try
-                        {
-                            var rootPath = drive.RootDirectory.FullName;
-                            var driveLabel = GetDriveLabel(drive);
-                            var driveType = GetDriveFormat(drive);
-                            long totalSize = 0;
-                            long freeSpace = 0;
-                            string format = "";
-
-                            if (drive.IsReady)
-                            {
-                                totalSize = drive.TotalSize;
-                                freeSpace = drive.TotalFreeSpace;
-                                format = drive.DriveFormat.ToString();
-                            }
-
-                            driveBatch.Add(new FileSystemObject
-                            {
-                                Image = FolderManager.GetImageSource(rootPath, ItemState.Undefined),
-                                Name = driveLabel,
-                                Path = drive.Name,
-                                TotalSpace = totalSize,
-                                FreeSpace = freeSpace,
-                                Size = totalSize - freeSpace,
-                                Format = format,
-                                Type = driveType,
-                                IsDirectory = true,
-                                IsDrive = true,
-                                IsRemovableDrive = drive.DriveType == DriveType.Removable
-                            });
-                        }
-                        catch
-                        {
-                        }
-
-                        processedDrives++;
-                        if (driveCount > 0)
-                        {
-                            int progress = (int)((double)processedDrives / driveCount * 100);
-                            await DispatchOnUiThreadAsync(() => ProgressPercent = progress, token);
-                        }
-                    }
-
-                    foreach (var directory in pathPolicy.AllowedExplicitDirectories.ToList())
-                    {
-                        token.ThrowIfCancellationRequested();
-
-                        if (!Directory.Exists(directory) || !pathPolicy.CanNavigate(directory, out _))
-                            continue;
-
-                        string directoryName = Path.GetFileName(directory.TrimEnd('\\', '/'));
-                        driveBatch.Add(new FileSystemObject
-                        {
-                            Image = FolderManager.GetImageSource(directory, ItemState.Undefined),
-                            Name = string.IsNullOrEmpty(directoryName) ? directory : directoryName,
-                            Path = directory,
-                            TotalSpace = NotApplicableSpaceSentinel,
-                            FreeSpace = NotApplicableSpaceSentinel,
-                            Type = "תיקיית קבצים",
-                            IsDirectory = true
-                        });
-                    }
-
-                    await DispatchOnUiThreadAsync(() =>
-                    {
-                        if (scanId != Interlocked.Read(ref currentScanId) || token.IsCancellationRequested)
-                            return;
-
-                        foreach (var item in driveBatch)
-                            FileSystemObjects.Add(item);
-                    }, token);
-                }
-                else
-                {
-                    if (!pathPolicy.CanNavigate(targetPath, out var navReason))
-                    {
-                        await DispatchOnUiThreadAsync(() =>
-                        {
-                            if (scanId != Interlocked.Read(ref currentScanId)) return;
-                            MessageBox.Show(navReason, "אין גישה", MessageBoxButton.OK, MessageBoxImage.Error, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
-                            TabPath = null;
-                            OpenTabPath();
-                        }, token);
-                        return;
-                    }
-
-                    var dirInfo = new DirectoryInfo(targetPath);
-                    if (!dirInfo.Exists)
-                    {
-                        await DispatchOnUiThreadAsync(() =>
-                        {
-                            if (scanId != Interlocked.Read(ref currentScanId)) return;
-                            MessageBox.Show("התיקייה המבוקשת אינה קיימת או שהוסרה.", "שגיאה", MessageBoxButton.OK, MessageBoxImage.Error, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
-                            TabPath = null;
-                            OpenTabPath();
-                        }, token);
-                        return;
-                    }
-
-                    var subDirs = dirInfo.EnumerateDirectories()
-                        .Where(d => pathPolicy.CanListDirectory(d.FullName, out _))
-                        .ToList();
-                    var files = dirInfo.EnumerateFiles()
-                        .Where(f => pathPolicy.CanListFile(f.FullName, out _))
-                        .ToList();
-
-                    int totalCount = subDirs.Count + files.Count;
-                    int processedCount = 0;
-                    const int BatchSize = 64;
-                    var batch = new List<FileSystemObject>(BatchSize);
-
-                    foreach (var directoryInfo in subDirs)
-                    {
-                        token.ThrowIfCancellationRequested();
-
-                        var directory = directoryInfo.FullName;
-                        batch.Add(new FileSystemObject
-                        {
-                            Image = FolderManager.GetImageSource(directory, ItemState.Undefined),
-                            Name = directoryInfo.Name,
-                            Path = directory,
-                            Size = 0,
-                            TotalSpace = NotApplicableSpaceSentinel,
-                            FreeSpace = NotApplicableSpaceSentinel,
-                            Format = directoryInfo.LastWriteTime.ToString(),
-                            Type = "תיקיית קבצים",
-                            LastWriteTime = directoryInfo.LastWriteTime.ToString(),
-                            RawLastWriteTime = directoryInfo.LastWriteTime,
-                            IsDirectory = true
-                        });
-
-                        processedCount++;
-
-                        if (batch.Count >= BatchSize)
-                        {
-                            var batchToSend = batch.ToList();
-                            batch.Clear();
-                            int currentProgress = totalCount > 0 ? (int)((double)processedCount / totalCount * 100) : 0;
-
-                            await DispatchOnUiThreadAsync(() =>
-                            {
-                                if (scanId != Interlocked.Read(ref currentScanId) || token.IsCancellationRequested)
-                                    return;
-
-                                foreach (var item in batchToSend)
-                                    FileSystemObjects.Add(item);
-
-                                ProgressPercent = currentProgress;
-                            }, token);
-                        }
-                    }
-
-                    foreach (var fileInfo in files)
-                    {
-                        token.ThrowIfCancellationRequested();
-
-                        var file = fileInfo.FullName;
-                        batch.Add(new FileSystemObject
-                        {
-                            Image = FileManager.GetImageSource(file),
-                            Name = fileInfo.Name,
-                            Path = file,
-                            Size = fileInfo.Length,
-                            Format = fileInfo.LastWriteTime.ToString(),
-                            Type = ShellManager.GetFileTypeDescription(fileInfo.Extension),
-                            CreationTime = fileInfo.CreationTime.ToString(),
-                            LastWriteTime = fileInfo.LastWriteTime.ToString(),
-                            RawLastWriteTime = fileInfo.LastWriteTime,
-                            TotalSpace = NotApplicableSpaceSentinel,
-                            FreeSpace = NotApplicableSpaceSentinel,
-                            IsDirectory = false
-                        });
-
-                        processedCount++;
-
-                        if (batch.Count >= BatchSize)
-                        {
-                            var batchToSend = batch.ToList();
-                            batch.Clear();
-                            int currentProgress = totalCount > 0 ? (int)((double)processedCount / totalCount * 100) : 0;
-
-                            await DispatchOnUiThreadAsync(() =>
-                            {
-                                if (scanId != Interlocked.Read(ref currentScanId) || token.IsCancellationRequested)
-                                    return;
-
-                                foreach (var item in batchToSend)
-                                    FileSystemObjects.Add(item);
-
-                                ProgressPercent = currentProgress;
-                            }, token);
-                        }
-                    }
-
-                    if (batch.Count > 0)
-                    {
-                        var remainingBatch = batch.ToList();
-                        batch.Clear();
-
-                        await DispatchOnUiThreadAsync(() =>
-                        {
-                            if (scanId != Interlocked.Read(ref currentScanId) || token.IsCancellationRequested)
-                                return;
-
-                            foreach (var item in remainingBatch)
-                                FileSystemObjects.Add(item);
-                        }, token);
-                    }
-                }
-            }, token);
-        }
-        catch (OperationCanceledException)
-        {
-            return;
-        }
-        catch (Exception ex) when (ex is IOException or DriveNotFoundException or DirectoryNotFoundException)
-        {
-            CrashLogger.LogMessage($"Device or directory disconnected when navigating to {targetPath}: {ex.Message}", "WARN");
-            await DispatchOnUiThreadAsync(() =>
-            {
-                if (scanId != Interlocked.Read(ref currentScanId)) return;
-                MessageBox.Show($"הכונן או התיקייה אינם זמינים (יתכן שההתקן נותק):\n{ex.Message}", "שגיאה בגישה לכונן", MessageBoxButton.OK, MessageBoxImage.Warning, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
-                TabPath = null;
-                OpenTabPath();
-            });
-        }
-        catch (UnauthorizedAccessException ex)
-        {
-            CrashLogger.LogMessage($"Unauthorized access when navigating to {targetPath}: {ex.Message}", "WARN");
-            await DispatchOnUiThreadAsync(() =>
-            {
-                if (scanId != Interlocked.Read(ref currentScanId)) return;
-                MessageBox.Show($"הגישה נדחתה:\n{ex.Message}", "אין גישה", MessageBoxButton.OK, MessageBoxImage.Error, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
-                TabPath = null;
-                OpenTabPath();
-            });
-        }
-        catch (Exception ex)
-        {
-            CrashLogger.LogException(ex, $"Failed to load path: {targetPath}");
-            await DispatchOnUiThreadAsync(() =>
-            {
-                if (scanId != Interlocked.Read(ref currentScanId)) return;
-                MessageBox.Show($"שגיאה בטעינת הנתיב:\n{ex.Message}", "שגיאה", MessageBoxButton.OK, MessageBoxImage.Error, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
-                TabPath = null;
-                OpenTabPath();
-            });
-        }
-        finally
-        {
-            if (scanId == Interlocked.Read(ref currentScanId))
-            {
-                await DispatchOnUiThreadAsync(() =>
-                {
-                    IsLoading = false;
-                    ProgressPercent = 100;
-                    ApplySorting();
-                    ApplyFilter();
-                    if (IsPreviewPaneVisible)
-                    {
-                        LoadPreview(CurrentFileSystemObject);
-                    }
-                });
-            }
-        }
-    }
-
-    private static async Task DispatchOnUiThreadAsync(Action action, CancellationToken token = default)
-    {
-        if (Application.Current?.Dispatcher == null || Application.Current.Dispatcher.CheckAccess())
-        {
-            action();
-            return;
-        }
-
-        try
-        {
-            await Application.Current.Dispatcher.InvokeAsync(action, DispatcherPriority.Background, token);
-        }
-        catch (OperationCanceledException)
-        {
-        }
-    }
-
-    private string GetDriveLabel(DriveInfo drive)
-    {
-        try
-        {
-            string label = (drive.IsReady && !string.IsNullOrEmpty(drive.VolumeLabel)) ? drive.VolumeLabel : "דיסק מקומי";
-            return $"{label} ({drive.Name})";
-        }
-        catch
-        {
-            return drive.Name;
-        }
-    }
-
-    private string GetDriveFormat(DriveInfo drive)
-    {
-        var driveType = drive.DriveType.ToString();
-
-        if (driveType == "Fixed")
-        {
-            return "דיסק מקומי";
-        }
-        else if (driveType == "Removable")
-        {
-            return "דיסק נשלף (USB)";
-        }
-        else
-        {
-            return driveType;
-        }
-    }
-
-    private static string DeleteFiles(List<string> filePaths)
-    {
-        var failureList = new List<string>();
-
-        foreach (var filePath in filePaths)
-        {
-            try
-            {
-                if (File.Exists(filePath))
-                {
-                    File.Delete(filePath);
-                }
-            }
-            catch (Exception ex)
-            {
-                failureList.Add($"{filePath} (Error: {ex.Message})");
-            }
-        }
-
-        return failureList.Any()
-            ? $"לא ניתן היה למחוק חלק מהקבצים:\n{string.Join("\n", failureList)}"
-            : "success";
-    }
-
-    #endregion
-
-    #region Phase 4 Helpers: Breadcrumbs, Filter, Sort, Preview, Auto-Refresh
-
-    private void UpdateBreadcrumbs(string path)
-    {
-        Breadcrumbs.Clear();
-        Breadcrumbs.Add(new BreadcrumbItem
-        {
-            Name = "בית",
-            Path = string.Empty,
-            IsLast = string.IsNullOrEmpty(path)
-        });
-
-        if (string.IsNullOrEmpty(path))
-            return;
-
-        string root = Path.GetPathRoot(path);
-        if (string.IsNullOrEmpty(root))
-            return;
-
-        string rootLabel = root;
-        try
-        {
-            var drive = new DriveInfo(root);
-            rootLabel = GetDriveLabel(drive);
-        }
-        catch { }
-
-        bool isRootOnly = string.Equals(root.TrimEnd('\\', '/'), path.TrimEnd('\\', '/'), StringComparison.OrdinalIgnoreCase);
-
-        Breadcrumbs.Add(new BreadcrumbItem
-        {
-            Name = rootLabel,
-            Path = root,
-            IsLast = isRootOnly
-        });
-
-        if (isRootOnly)
-            return;
-
-        string sub = path.Substring(root.Length).Trim('\\', '/');
-        if (string.IsNullOrEmpty(sub))
-            return;
-
-        string[] parts = sub.Split(new[] { '\\', '/' }, StringSplitOptions.RemoveEmptyEntries);
-        string currentAccumulated = root.TrimEnd('\\', '/');
-
-        for (int i = 0; i < parts.Length; i++)
-        {
-            currentAccumulated = Path.Combine(currentAccumulated, parts[i]);
-            Breadcrumbs.Add(new BreadcrumbItem
-            {
-                Name = parts[i],
-                Path = currentAccumulated,
-                IsLast = (i == parts.Length - 1)
-            });
-        }
-    }
-
-    private void OnNavigateBreadcrumbExecuted(object p)
-    {
-        string path = p as string;
-        OpenCmd.Execute(path);
-    }
-
-    private void ApplyFilter()
-    {
-        var view = CollectionViewSource.GetDefaultView(FileSystemObjects);
-        if (view == null) return;
-
-        if (string.IsNullOrWhiteSpace(searchText))
-        {
-            view.Filter = null;
-        }
-        else
-        {
-            string query = searchText.Trim();
-            view.Filter = item =>
-            {
-                if (item is FileSystemObject fso && fso.Name != null)
-                {
-                    return fso.Name.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0;
-                }
-                return true;
-            };
-        }
+        selectedItems.Clear();
+        selectedItems.AddRange(items);
+        CommandManager.InvalidateRequerySuggested();
     }
 
     public void SortByColumn(string columnTag)
     {
-        if (!Enum.TryParse<SortColumn>(columnTag, true, out var col))
+        if (!Enum.TryParse<SortColumn>(columnTag, true, out var column))
             return;
 
-        if (CurrentSortColumn == col)
-        {
-            CurrentSortDirection = CurrentSortDirection == ListSortDirection.Ascending
-                ? ListSortDirection.Descending
-                : ListSortDirection.Ascending;
-        }
-        else
-        {
-            CurrentSortColumn = col;
-            CurrentSortDirection = ListSortDirection.Ascending;
-        }
+        CurrentSortDirection = CurrentSortColumn == column && CurrentSortDirection == ListSortDirection.Ascending
+            ? ListSortDirection.Descending
+            : ListSortDirection.Ascending;
+        CurrentSortColumn = column;
 
         ApplySorting();
         OnPropertyChanged(nameof(CurrentSortColumn));
         OnPropertyChanged(nameof(CurrentSortDirection));
     }
 
-    private void ApplySorting()
+    /// <summary>Opens a folder or a file; an empty path is the home screen.</summary>
+    public bool Open(string? rawPath)
     {
-        if (CollectionViewSource.GetDefaultView(FileSystemObjects) is ListCollectionView view)
+        string path = rawPath?.Trim().Trim('"') ?? string.Empty;
+        if (path.Length == 0)
         {
-            view.CustomSort = new FileSystemObjectComparer(CurrentSortColumn, CurrentSortDirection);
+            GoHome();
+            return true;
         }
+
+        if (Directory.Exists(path))
+        {
+            if (!policy.CanNavigate(path, out var reason))
+                return Deny(path, reason);
+
+            TabPath = Path.GetFullPath(path);
+            Reload();
+            return true;
+        }
+
+        if (File.Exists(path))
+            return OpenFile(path);
+
+        dialogs.Error($"הנתיב המבוקש אינו קיים או שאינו נגיש:\n{path}", "שגיאה");
+        return false;
     }
 
-    private void StartWatcher(string path)
+    public void GoHome()
     {
-        StopWatcher();
+        TabPath = null;
+        Reload();
+    }
 
-        if (string.IsNullOrEmpty(path) || !Directory.Exists(path))
+    /// <summary>Loads the current path. Loading the same path again keeps the selection and the scroll position.</summary>
+    public async void Reload()
+    {
+        if (disposed) return;
+
+        scan.Cancel();
+        scan.Dispose();
+        scan = new CancellationTokenSource();
+        var token = scan.Token;
+
+        if (TabPath != null && !policy.CanNavigate(TabPath, out var reason))
+        {
+            string denied = TabPath;
+            TabPath = null;
+            Deny(denied, reason);
+        }
+
+        string? path = TabPath;
+        bool isRefresh = hasLoaded && string.Equals(path, loadedPath, StringComparison.OrdinalIgnoreCase);
+
+        UpdateTitle();
+        watcher.Start(path);
+        ProgressPercent = 0;
+        IsLoading = true;
+
+        if (!isRefresh)
+        {
+            hasLoaded = false;
+            selectedItems.Clear();
+            FileSystemObjects.Clear();
+        }
+
+        string? failure = null;
+        try
+        {
+            await LoadAsync(path, isRefresh, token);
+            loadedPath = path;
+            hasLoaded = true;
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            failure = $"הגישה נדחתה:\n{ex.Message}";
+            CrashLogger.LogMessage($"Access denied to {path}: {ex.Message}", "WARN");
+        }
+        catch (IOException ex)
+        {
+            failure = $"הכונן או התיקייה אינם זמינים (יתכן שההתקן נותק):\n{ex.Message}";
+            CrashLogger.LogMessage($"{path} is unavailable: {ex.Message}", "WARN");
+        }
+
+        // A newer load owns the tab now.
+        if (token.IsCancellationRequested)
             return;
 
+        IsLoading = false;
+        ProgressPercent = 100;
+        CommandManager.InvalidateRequerySuggested();
+
+        if (failure == null)
+            return;
+
+        // Leave the failed folder first: a message box lets other events in.
+        if (path != null)
+            GoHome();
+        dialogs.Warn(failure, "שגיאה בגישה");
+    }
+
+    private async Task LoadAsync(string? path, bool isRefresh, CancellationToken token)
+    {
+        var refreshed = new List<FileSystemObject>();
+
+        await foreach (var batch in services.Loader.LoadAsync(path, token))
+        {
+            token.ThrowIfCancellationRequested();
+            ProgressPercent = batch.ProgressPercent;
+
+            if (isRefresh)
+            {
+                refreshed.AddRange(batch.Items);
+                continue;
+            }
+
+            foreach (var item in batch.Items)
+                FileSystemObjects.Add(item);
+        }
+
+        token.ThrowIfCancellationRequested();
+        if (isRefresh)
+            Merge(refreshed);
+    }
+
+    private void Merge(List<FileSystemObject> latest)
+    {
+        var byPath = latest.ToDictionary(item => item.Path, StringComparer.OrdinalIgnoreCase);
+        bool changed = false;
+        bool currentChanged = false;
+
+        foreach (var existing in FileSystemObjects.ToList())
+        {
+            if (!byPath.Remove(existing.Path, out var updated) || updated.IsDirectory != existing.IsDirectory)
+            {
+                FileSystemObjects.Remove(existing);
+                if (updated != null)
+                    byPath[updated.Path] = updated;
+            }
+            else if (existing.UpdateFrom(updated))
+            {
+                changed = true;
+                currentChanged |= existing == CurrentFileSystemObject;
+            }
+        }
+
+        foreach (var added in latest.Where(item => byPath.ContainsKey(item.Path)))
+            FileSystemObjects.Add(added);
+
+        if (changed)
+            itemsView.Refresh();
+        if (currentChanged)
+            UpdatePreview();
+    }
+
+    private bool OpenFile(string path)
+    {
+        if (!policy.CanOpenFile(path, out var reason))
+            return Deny(path, reason);
+
+        string fullPath = Path.GetFullPath(path);
         try
         {
-            currentWatcher = new FileSystemWatcher(path)
-            {
-                NotifyFilter = NotifyFilters.FileName | NotifyFilters.DirectoryName | NotifyFilters.LastWrite | NotifyFilters.Size,
-                IncludeSubdirectories = false,
-                EnableRaisingEvents = true
-            };
-            currentWatcher.Created += OnDirectoryChanged;
-            currentWatcher.Deleted += OnDirectoryChanged;
-            currentWatcher.Renamed += OnDirectoryRenamed;
-            currentWatcher.Changed += OnDirectoryChanged;
-            currentWatcher.Error += OnWatcherError;
+            Process.Start(new ProcessStartInfo(fullPath) { UseShellExecute = true })?.Dispose();
+            services.Audit.Log(AuditEventType.FileOpened, fullPath, "File opened in default application");
+            return true;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is Win32Exception or IOException)
         {
-            CrashLogger.LogMessage($"FileSystemWatcher could not start on {path}: {ex.Message}", "INFO");
+            CrashLogger.LogException(ex, $"Failed to open file: {fullPath}");
+            services.Audit.Log(AuditEventType.FileOpened, fullPath, ex.Message, false);
+            dialogs.Error(ex.Message, "שגיאה בפתיחת הקובץ");
+            return false;
         }
     }
 
-    private void StopWatcher()
+    private bool Deny(string path, string reason)
     {
-        if (currentWatcher != null)
-        {
-            try
-            {
-                currentWatcher.EnableRaisingEvents = false;
-                currentWatcher.Created -= OnDirectoryChanged;
-                currentWatcher.Deleted -= OnDirectoryChanged;
-                currentWatcher.Renamed -= OnDirectoryRenamed;
-                currentWatcher.Changed -= OnDirectoryChanged;
-                currentWatcher.Error -= OnWatcherError;
-                currentWatcher.Dispose();
-            }
-            catch { }
-            finally
-            {
-                currentWatcher = null;
-            }
-        }
+        services.Audit.Log(AuditEventType.SecurityBlocked, path, reason, false);
+        dialogs.Warn(reason, "גישה נדחתה");
+        return false;
     }
 
-    private void OnDirectoryChanged(object sender, FileSystemEventArgs e) => TriggerDebouncedRefresh();
-    private void OnDirectoryRenamed(object sender, RenamedEventArgs e) => TriggerDebouncedRefresh();
-
-    private void OnWatcherError(object sender, ErrorEventArgs e)
+    private void GoUp()
     {
-        StopWatcher();
+        if (TabPath == null) return;
+
+        string? parent = Path.GetDirectoryName(TabPath);
+        TabPath = !string.IsNullOrEmpty(parent) && policy.CanNavigate(parent, out _) ? parent : null;
+        Reload();
     }
 
-    private void TriggerDebouncedRefresh()
+    private void BeginAddressEdit()
     {
-        Application.Current?.Dispatcher?.InvokeAsync(() =>
-        {
-            refreshDebounceTimer.Stop();
-            refreshDebounceTimer.Start();
-        });
+        AddressText = TabPath ?? string.Empty;
+        IsAddressBarEditing = true;
     }
 
-    private void OnSessionReset(object sender, EventArgs e)
+    private void CommitAddress()
     {
-        Application.Current?.Dispatcher?.InvokeAsync(() =>
-        {
-            SearchText = string.Empty;
-            PreviewInfo.Clear();
-            RefreshSidebar();
-            OpenCmd.Execute(null);
-        });
+        if (Open(AddressText))
+            IsAddressBarEditing = false;
     }
 
-    public void RefreshSidebar()
+    private void OpenAdmin()
     {
-        SidebarQuickAccess.Clear();
-        SidebarDrives.Clear();
+        if (!dialogs.AuthenticateAdmin() || !dialogs.ShowAdminSettings())
+            return;
 
-        void TryAddQuickFolder(string displayName, Environment.SpecialFolder folder)
-        {
-            try
-            {
-                var folderPath = Environment.GetFolderPath(folder);
-                if (!string.IsNullOrEmpty(folderPath) && Directory.Exists(folderPath) && pathPolicy.CanNavigate(folderPath, out _))
-                {
-                    SidebarQuickAccess.Add(new FileSystemObject
-                    {
-                        Name = displayName,
-                        Path = folderPath,
-                        IsDirectory = true,
-                        Image = FolderManager.GetImageSource(folderPath, ItemState.Undefined)
-                    });
-                }
-            }
-            catch
-            {
-            }
-        }
+        CommandManager.InvalidateRequerySuggested();
+        RefreshSidebar();
+        Reload();
+    }
 
-        TryAddQuickFolder("שולחן העבודה", Environment.SpecialFolder.Desktop);
-        TryAddQuickFolder("מסמכים", Environment.SpecialFolder.MyDocuments);
+    private void UpdateTitle()
+    {
+        if (string.IsNullOrEmpty(TabPath))
+            TabTitle = "בית";
+        else if (Path.GetPathRoot(TabPath) == TabPath)
+            TabTitle = DriveDescriber.GetLabel(TabPath);
+        else
+            TabTitle = Path.GetFileName(TabPath);
+    }
 
-        try
-        {
-            var downloadsPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
-            if (Directory.Exists(downloadsPath) && pathPolicy.CanNavigate(downloadsPath, out _))
-            {
-                SidebarQuickAccess.Add(new FileSystemObject
-                {
-                    Name = "הורדות",
-                    Path = downloadsPath,
-                    IsDirectory = true,
-                    Image = FolderManager.GetImageSource(downloadsPath, ItemState.Undefined)
-                });
-            }
-        }
-        catch
-        {
-        }
+    private void UpdateBreadcrumbs()
+    {
+        Breadcrumbs.Clear();
+        foreach (var item in BreadcrumbBuilder.Build(TabPath))
+            Breadcrumbs.Add(item);
+    }
 
-        try
-        {
-            var drives = pathPolicy.GetAllowedDrives();
-            foreach (var drive in drives)
-            {
-                try
-                {
-                    var rootPath = drive.RootDirectory.FullName;
-                    SidebarDrives.Add(new FileSystemObject
-                    {
-                        Name = GetDriveLabel(drive),
-                        Path = drive.Name,
-                        IsDirectory = true,
-                        IsDrive = true,
-                        IsRemovableDrive = drive.DriveType == DriveType.Removable,
-                        Image = FolderManager.GetImageSource(rootPath, ItemState.Undefined)
-                    });
-                }
-                catch
-                {
-                }
-            }
-        }
-        catch
-        {
-        }
+    private void UpdatePreview() => _ = preview.LoadAsync(IsPreviewPaneVisible ? CurrentFileSystemObject : null);
+
+    private void RefreshSidebar() => _ = sidebar.RefreshAsync();
+
+    private void ApplySorting() => itemsView.CustomSort = new FileSystemObjectComparer(CurrentSortColumn, CurrentSortDirection);
+
+    private void ApplyFilter()
+    {
+        string query = SearchText.Trim();
+        itemsView.Filter = query.Length == 0
+            ? null
+            : item => item is FileSystemObject entry && entry.Name.Contains(query, StringComparison.OrdinalIgnoreCase);
     }
 
     private bool IsOnDrive(string root) =>
-        !string.IsNullOrEmpty(TabPath) && string.Equals(Path.GetPathRoot(TabPath), root, StringComparison.OrdinalIgnoreCase);
+        TabPath != null && string.Equals(Path.GetPathRoot(TabPath), root, StringComparison.OrdinalIgnoreCase);
 
-    private void OnDriveReleasing(object sender, string root)
+    private void OnDriveReleasing(object? sender, string root)
     {
         if (!IsOnDrive(root)) return;
 
-        lock (scanLock)
-        {
-            currentScanCts?.Cancel();
-        }
-        StopWatcher();
+        scan.Cancel();
+        watcher.Stop();
+        preview.Clear();
     }
 
-    private void OnDriveReleaseFinished(object sender, string root)
+    private void OnDriveReleaseFinished(object? sender, string root)
     {
         // Still mounted means the eject failed, so resume watching the folder.
         if (IsOnDrive(root) && Directory.Exists(TabPath))
-            OpenTabPath();
+            Reload();
     }
 
-    private void OnDeviceNotification(object sender, EventArgs e)
+    private void OnSessionReset(object? sender, EventArgs e) => dispatcher.InvokeAsync(() =>
     {
-        Application.Current?.Dispatcher?.InvokeAsync(() =>
-        {
-            RefreshSidebar();
+        SearchText = string.Empty;
+        preview.Clear();
+        RefreshSidebar();
+        GoHome();
+    });
 
-            if (string.IsNullOrEmpty(TabPath))
-            {
-                OpenCmd.Execute(null);
-            }
-            else
-            {
-                try
-                {
-                    string root = Path.GetPathRoot(TabPath);
-                    if (string.IsNullOrEmpty(root) || !Directory.Exists(root) || !new DriveInfo(root).IsReady)
-                    {
-                        MessageBox.Show("הכונן נותק מהמחשב. חוזר לתצוגת הבית.", "התקן נותק", MessageBoxButton.OK, MessageBoxImage.Information, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
-                        BackHome.Execute(null);
-                    }
-                }
-                catch
-                {
-                    BackHome.Execute(null);
-                }
-            }
-        });
-    }
-
-    private async void LoadPreview(FileSystemObject item)
+    private void OnDeviceChanged(object? sender, EventArgs e) => dispatcher.InvokeAsync(() =>
     {
-        if (item == null || string.IsNullOrEmpty(item.Path))
+        if (disposed) return;
+
+        RefreshSidebar();
+        if (TabPath == null)
         {
-            PreviewInfo.Clear();
-            return;
+            Reload();
         }
-
-        PreviewInfo.FileName = item.Name;
-        PreviewInfo.FilePath = item.Path;
-        PreviewInfo.LastModifiedFormatted = item.LastWriteTime;
-        PreviewInfo.IconPreview = item.Image;
-
-        if (item.IsDirectory)
+        else if (!Directory.Exists(Path.GetPathRoot(TabPath)))
         {
-            PreviewInfo.Type = PreviewType.Directory;
-            PreviewInfo.FileSizeFormatted = item.Size > 0 ? BytesToNormalSize.FormatBytes(item.Size) : "תיקייה";
-            PreviewInfo.StatusMessage = "תיקייה";
-            PreviewInfo.TextContent = null;
-            PreviewInfo.ImagePreview = null;
-            return;
+            GoHome();
+            dialogs.Info("הכונן נותק מהמחשב. חוזר לתצוגת הבית.", "התקן נותק");
         }
-
-        PreviewInfo.FileSizeFormatted = BytesToNormalSize.FormatBytes(item.Size);
-
-        if (!pathPolicy.CanPreviewFile(item.Path, out string previewBlockReason))
-        {
-            PreviewInfo.Type = PreviewType.None;
-            PreviewInfo.TextContent = null;
-            PreviewInfo.ImagePreview = null;
-            PreviewInfo.IsLoading = false;
-            PreviewInfo.StatusMessage = $"תצוגה מקדימה חסומה: {previewBlockReason}";
-            return;
-        }
-
-        string ext = Path.GetExtension(item.Path)?.ToLowerInvariant() ?? string.Empty;
-
-        // Plain study text files (whitelisted only)
-        if (ext is ".txt" or ".csv")
-        {
-            PreviewInfo.IsLoading = true;
-            PreviewInfo.Type = PreviewType.Text;
-            PreviewInfo.ImagePreview = null;
-            try
-            {
-                string text = await Task.Run(() =>
-                {
-                    using var stream = new FileStream(item.Path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-                    using var reader = new StreamReader(stream);
-                    char[] buffer = new char[65536];
-                    int charsRead = reader.Read(buffer, 0, buffer.Length);
-                    return new string(buffer, 0, charsRead);
-                });
-                PreviewInfo.TextContent = text;
-                PreviewInfo.StatusMessage = $"מוצגים {text.Length} תווים ראשונים";
-            }
-            catch (Exception ex)
-            {
-                PreviewInfo.StatusMessage = "שגיאה בקריאת הקובץ: " + ex.Message;
-                PreviewInfo.Type = PreviewType.Document;
-            }
-            finally
-            {
-                PreviewInfo.IsLoading = false;
-            }
-            return;
-        }
-
-        // Office & PDF documents (metadata & icon only)
-        PreviewInfo.Type = PreviewType.Document;
-        PreviewInfo.TextContent = null;
-        PreviewInfo.ImagePreview = null;
-        PreviewInfo.StatusMessage = "קובץ מסמך (דאבל קליק לפתיחה ביישום ברירת מחדל)";
-    }
-
-    #endregion
+    });
 }

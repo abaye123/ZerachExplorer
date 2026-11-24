@@ -21,50 +21,50 @@ internal class FilePreviewInfo : ViewModel
         set => SetValue(ref type, value);
     }
 
-    private string fileName;
-    public string FileName
+    private string? fileName;
+    public string? FileName
     {
         get => fileName;
         set => SetValue(ref fileName, value);
     }
 
-    private string filePath;
-    public string FilePath
+    private string? filePath;
+    public string? FilePath
     {
         get => filePath;
         set => SetValue(ref filePath, value);
     }
 
-    private string fileSizeFormatted;
-    public string FileSizeFormatted
+    private string? fileSizeFormatted;
+    public string? FileSizeFormatted
     {
         get => fileSizeFormatted;
         set => SetValue(ref fileSizeFormatted, value);
     }
 
-    private string lastModifiedFormatted;
-    public string LastModifiedFormatted
+    private string? lastModifiedFormatted;
+    public string? LastModifiedFormatted
     {
         get => lastModifiedFormatted;
         set => SetValue(ref lastModifiedFormatted, value);
     }
 
-    private string textContent;
-    public string TextContent
+    private string? textContent;
+    public string? TextContent
     {
         get => textContent;
         set => SetValue(ref textContent, value);
     }
 
-    private ImageSource imagePreview;
-    public ImageSource ImagePreview
+    private ImageSource? imagePreview;
+    public ImageSource? ImagePreview
     {
         get => imagePreview;
         set => SetValue(ref imagePreview, value);
     }
 
-    private ImageSource iconPreview;
-    public ImageSource IconPreview
+    private ImageSource? iconPreview;
+    public ImageSource? IconPreview
     {
         get => iconPreview;
         set => SetValue(ref iconPreview, value);

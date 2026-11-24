@@ -63,6 +63,9 @@ public partial class AdminSettingsWindow : Window
         var p = workingConfig.Permissions ?? PathPermissions.CreateStandard();
         ChkKioskMode.IsChecked = workingConfig.KioskModeEnabled;
         ChkPreventExit.IsChecked = workingConfig.PreventAppExit;
+        ChkUsbDialog.IsChecked = workingConfig.ShowUsbDialog;
+        TxtLogDays.Text = workingConfig.LogRetentionDays.ToString();
+        TxtLogSize.Text = workingConfig.LogMaxSizeMegabytes.ToString();
         ChkCanList.IsChecked = p.CanList;
         ChkCanOpen.IsChecked = p.CanOpen;
         ChkCanCopyFrom.IsChecked = p.CanCopyFrom;
@@ -109,7 +112,7 @@ public partial class AdminSettingsWindow : Window
     private void CmbProfile_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (CmbProfile.SelectedItem is not ComboBoxItem item || item.Tag == null) return;
-        string tag = item.Tag.ToString();
+        string? tag = item.Tag.ToString();
 
         switch (tag)
         {
@@ -138,7 +141,7 @@ public partial class AdminSettingsWindow : Window
 
     private void AddExtension_Click(object sender, RoutedEventArgs e)
     {
-        string text = TxtNewExtension.Text?.Trim().ToLowerInvariant();
+        string? text = TxtNewExtension.Text?.Trim().ToLowerInvariant();
         if (string.IsNullOrWhiteSpace(text)) return;
         if (!text.StartsWith(".")) text = "." + text;
 
@@ -166,7 +169,7 @@ public partial class AdminSettingsWindow : Window
 
     private void AddDirectory_Click(object sender, RoutedEventArgs e)
     {
-        string text = TxtNewDirectory.Text?.Trim();
+        string? text = TxtNewDirectory.Text?.Trim();
         if (string.IsNullOrWhiteSpace(text)) return;
 
         try
@@ -223,6 +226,17 @@ public partial class AdminSettingsWindow : Window
 
     private void Save_Click(object sender, RoutedEventArgs e)
     {
+        if (!TryReadNumber(TxtLogDays, AppConfiguration.MaximumLogRetentionDays, out int logDays) ||
+            !TryReadNumber(TxtLogSize, AppConfiguration.MaximumLogMaxSizeMegabytes, out int logSize))
+        {
+            TxtStatusMessage.Text = "ערכי היומן אינם תקינים: 1-365 ימים, 1-500 מגה-בייט.";
+            return;
+        }
+
+        workingConfig.LogRetentionDays = logDays;
+        workingConfig.LogMaxSizeMegabytes = logSize;
+        workingConfig.ShowUsbDialog = ChkUsbDialog.IsChecked == true;
+
         var item = CmbProfile.SelectedItem as ComboBoxItem;
         string tag = item?.Tag?.ToString() ?? "Standard";
 
@@ -252,10 +266,11 @@ public partial class AdminSettingsWindow : Window
         workingConfig.PreventAppExit = ChkPreventExit.IsChecked == true;
         workingConfig.BlockedDriveRoots = drives.Where(d => d.IsBlocked).Select(d => d.Root).ToList();
 
-        if (configService.Save(workingConfig, out string error))
+        if (configService.Save(workingConfig, out string? error))
         {
             configService.ApplyToPolicy(pathPolicy);
             KioskController.Instance.Configure(configService.Configuration);
+            LogLimits.Apply(configService.Configuration);
             KioskController.Instance.ApplyKioskWindowSettings(Application.Current.MainWindow);
             AuditService.Instance.Log(AuditEventType.AdminAccess, "Settings", "Settings saved", true);
             DialogResult = true;
@@ -266,6 +281,9 @@ public partial class AdminSettingsWindow : Window
             TxtStatusMessage.Text = error;
         }
     }
+
+    private static bool TryReadNumber(TextBox box, int maximum, out int value) =>
+        int.TryParse(box.Text.Trim(), out value) && value >= 1 && value <= maximum;
 
     private void Cancel_Click(object sender, RoutedEventArgs e)
     {

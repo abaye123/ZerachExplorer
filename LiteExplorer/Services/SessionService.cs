@@ -1,24 +1,32 @@
-using System;
-using System.IO;
-using System.Threading;
-using System.Windows;
 using LiteExplorer.MVVM.Models;
+using System.IO;
+using System.Runtime.InteropServices;
+using System.Windows;
 
 namespace LiteExplorer.Services;
 
 public class SessionService : ISessionService
 {
-    public static SessionService Instance { get; } = new();
+    public static SessionService Instance { get; } = new(AuditService.Instance, ClearClipboard, Path.Combine(Path.GetTempPath(), "ZerachExplorer"));
 
-    public event EventHandler SessionReset;
+    private readonly IAuditService audit;
+    private readonly Action clearClipboard;
+    private readonly string tempDirectory;
+
+    internal SessionService(IAuditService audit, Action clearClipboard, string tempDirectory)
+    {
+        this.audit = audit;
+        this.clearClipboard = clearClipboard;
+        this.tempDirectory = tempDirectory;
+    }
+
+    public event EventHandler? SessionReset;
 
     public void ResetSession()
     {
         WipeClipboard();
         CleanTempFiles();
-
-        AuditService.Instance.Log(AuditEventType.SessionReset, "Session", "User session and temporary buffers reset", true);
-
+        audit.Log(AuditEventType.SessionReset, "Session", "User session and temporary buffers reset", true);
         SessionReset?.Invoke(this, EventArgs.Empty);
     }
 
@@ -26,50 +34,37 @@ public class SessionService : ISessionService
     {
         try
         {
-            if (Application.Current != null && Application.Current.Dispatcher != null)
-            {
-                if (Application.Current.Dispatcher.CheckAccess())
-                {
-                    Clipboard.Clear();
-                }
-                else
-                {
-                    Application.Current.Dispatcher.Invoke(() => Clipboard.Clear());
-                }
-            }
-            else
-            {
-                var staThread = new Thread(() =>
-                {
-                    try { Clipboard.Clear(); } catch { }
-                });
-                staThread.SetApartmentState(ApartmentState.STA);
-                staThread.Start();
-                staThread.Join(500);
-            }
+            clearClipboard();
         }
-        catch
+        catch (ExternalException ex)
         {
-            // Suppress clipboard wipe errors
+            // Another process holds the clipboard.
+            CrashLogger.LogException(ex, "Clipboard wipe failed");
         }
     }
 
     public void CleanTempFiles()
     {
-        try
+        if (!Directory.Exists(tempDirectory))
+            return;
+
+        foreach (var file in Directory.GetFiles(tempDirectory))
         {
-            string appTempDir = Path.Combine(Path.GetTempPath(), "ZerachExplorer");
-            if (Directory.Exists(appTempDir))
+            try
             {
-                foreach (var file in Directory.GetFiles(appTempDir))
-                {
-                    try { File.Delete(file); } catch { }
-                }
+                File.Delete(file);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                CrashLogger.LogMessage($"Temporary file {file} was not removed: {ex.Message}", "WARN");
             }
         }
-        catch
-        {
-            // Suppress temp file deletion errors
-        }
+    }
+
+    private static void ClearClipboard()
+    {
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher != null)
+            dispatcher.Invoke(Clipboard.Clear);
     }
 }

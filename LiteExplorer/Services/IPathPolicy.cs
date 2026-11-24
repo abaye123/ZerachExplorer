@@ -1,5 +1,6 @@
 using LiteExplorer.MVVM.Models;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 
 namespace LiteExplorer.Services;
@@ -63,7 +64,7 @@ public interface IPathPolicy
     /// <summary>
     /// Validates whether a drive is permitted according to whitelist policy.
     /// </summary>
-    bool IsDriveAllowed(DriveInfo drive, out string reason);
+    bool IsDriveAllowed(DriveInfo drive, [NotNullWhen(false)] out string? reason);
 
     /// <summary>
     /// Returns all accessible drives that pass the whitelist and exclusion checks.
@@ -73,65 +74,65 @@ public interface IPathPolicy
     /// <summary>
     /// Normalizes a raw path and rejects UNC, reserved device names, and NTFS ADS.
     /// </summary>
-    bool TryNormalizePath(string rawPath, out string normalizedPath, out string reason);
+    bool TryNormalizePath(string rawPath, [NotNullWhen(true)] out string? normalizedPath, [NotNullWhen(false)] out string? reason);
 
     /// <summary>
     /// Validates whether navigation to the given directory path is permitted.
     /// </summary>
-    bool CanNavigate(string path, out string reason);
+    bool CanNavigate(string path, [NotNullWhen(false)] out string? reason);
 
     /// <summary>
     /// Validates whether a directory should be displayed in the file list.
     /// </summary>
-    bool CanListDirectory(string directoryPath, out string reason);
+    bool CanListDirectory(string directoryPath, [NotNullWhen(false)] out string? reason);
 
     /// <summary>
     /// Validates whether a file should be displayed in the file list.
     /// </summary>
-    bool CanListFile(string filePath, out string reason);
+    bool CanListFile(string filePath, [NotNullWhen(false)] out string? reason);
 
     /// <summary>
     /// Validates whether a file is permitted to be opened / launched.
     /// </summary>
-    bool CanOpenFile(string filePath, out string reason);
+    bool CanOpenFile(string filePath, [NotNullWhen(false)] out string? reason);
 
     /// <summary>
     /// Validates whether a file is permitted to be previewed in the Quick Preview pane.
     /// </summary>
-    bool CanPreviewFile(string filePath, out string reason);
+    bool CanPreviewFile(string filePath, [NotNullWhen(false)] out string? reason);
 
     /// <summary>
     /// Validates whether a file or directory is permitted to be deleted.
     /// </summary>
-    bool CanDelete(string path, out string reason);
+    bool CanDelete(string path, [NotNullWhen(false)] out string? reason);
 
     /// <summary>
     /// Validates whether renaming a file from oldPath to newPath is permitted.
     /// </summary>
-    bool CanRename(string oldPath, string newPath, out string reason);
+    bool CanRename(string oldPath, string newPath, [NotNullWhen(false)] out string? reason);
 
     /// <summary>
     /// Validates whether copying a file from sourcePath to destinationDirectory is permitted.
     /// </summary>
-    bool CanCopyFile(string sourcePath, string destinationDirectory, out string reason);
+    bool CanCopyFile(string sourcePath, string destinationDirectory, [NotNullWhen(false)] out string? reason);
 
     /// <summary>
     /// Validates whether moving a file from sourcePath to destinationDirectory is permitted.
     /// </summary>
-    bool CanMoveFile(string sourcePath, string destinationDirectory, out string reason);
+    bool CanMoveFile(string sourcePath, string destinationDirectory, [NotNullWhen(false)] out string? reason);
 
     /// <summary>
     /// Validates whether copying or moving an entire directory is permitted.
     /// </summary>
-    bool CanTransferDirectory(string sourceDirectory, string destinationDirectory, bool isMove, out string reason);
+    bool CanTransferDirectory(string sourceDirectory, string destinationDirectory, bool isMove, [NotNullWhen(false)] out string? reason);
 
     /// <summary>
     /// Validates whether creating a new directory inside parentDirectory is permitted.
     /// </summary>
-    bool CanCreateDirectory(string parentDirectory, string newDirectoryName, out string reason);
+    bool CanCreateDirectory(string parentDirectory, string newDirectoryName, [NotNullWhen(false)] out string? reason);
 
     /// <summary>
     /// Validates whether ejecting the specified drive is permitted.
     /// </summary>
-    bool CanEjectDrive(string drivePath, out string reason);
+    bool CanEjectDrive(string drivePath, [NotNullWhen(false)] out string? reason);
 }

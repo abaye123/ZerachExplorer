@@ -4,6 +4,14 @@ namespace LiteExplorer.MVVM.Models;
 
 public class AppConfiguration
 {
+    public const int DefaultLogRetentionDays = 30;
+    public const int MaximumLogRetentionDays = 365;
+    public const int DefaultLogMaxSizeMegabytes = 10;
+    public const int MaximumLogMaxSizeMegabytes = 500;
+
+    public int LogRetentionDays { get; set; } = DefaultLogRetentionDays;
+    public int LogMaxSizeMegabytes { get; set; } = DefaultLogMaxSizeMegabytes;
+    public bool ShowUsbDialog { get; set; }
     public KioskProfile Profile { get; set; } = KioskProfile.Standard;
     public bool KioskModeEnabled { get; set; }
     public bool PreventAppExit { get; set; }

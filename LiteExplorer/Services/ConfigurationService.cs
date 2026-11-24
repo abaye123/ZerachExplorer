@@ -179,7 +179,12 @@ public class ConfigurationService : IConfigurationService
             config.BlockedVolumeSerialNumbers
         }.Any(list => list == null);
 
-        return hasNull ? throw new InvalidDataException("The configuration file has missing values.") : config;
+        if (hasNull)
+            throw new InvalidDataException("The configuration file has missing values.");
+
+        config.LogRetentionDays = Math.Clamp(config.LogRetentionDays, 1, AppConfiguration.MaximumLogRetentionDays);
+        config.LogMaxSizeMegabytes = Math.Clamp(config.LogMaxSizeMegabytes, 1, AppConfiguration.MaximumLogMaxSizeMegabytes);
+        return config;
     }
 
     private static void Replace(ISet<string> target, IEnumerable<string> values)

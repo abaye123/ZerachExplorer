@@ -16,7 +16,7 @@ public class AuditEntry
         return $"[{Timestamp:yyyy-MM-dd HH:mm:ss}] [{EventType}] [{status}] Target: {Target} | Details: {Details}";
     }
 
-    public static AuditEntry Parse(string line)
+    public static AuditEntry? Parse(string? line)
     {
         if (string.IsNullOrWhiteSpace(line)) return null;
 
@@ -60,7 +60,7 @@ public class AuditEntry
             }
             return entry;
         }
-        catch
+        catch (ArgumentException)
         {
             return null;
         }
