@@ -513,16 +513,27 @@
                     BorderBrush="{StaticResource LineBrush}"
                     BorderThickness="1,0,0,0"
                     Visibility="{Binding IsPreviewPaneVisible, Converter={StaticResource BoolToVisibility}}">
-                <DockPanel Margin="18,16">
-                    <StackPanel DockPanel.Dock="Top">
-                        <Image Source="{Binding PreviewInfo.IconPreview}" Width="64" Height="64" Margin="0,4,0,12" Style="{StaticResource SharpImage}" />
+                <DockPanel>
+                    <Border DockPanel.Dock="Top" Height="168" Background="#F9F9F9">
+                        <Image Source="{Binding PreviewInfo.IconPreview}" Width="96" Height="96" Style="{StaticResource SharpImage}" />
+                    </Border>
+                    <StackPanel DockPanel.Dock="Top" Margin="20,18,20,0">
                         <TextBlock Text="{Binding PreviewInfo.FileName}"
                                    FlowDirection="{Binding PreviewInfo.FileName, Converter={StaticResource TextDirection}}"
+                                   HorizontalAlignment="Left"
                                    FontSize="16"
                                    FontWeight="SemiBold"
-                                   TextAlignment="Center"
                                    TextWrapping="Wrap" />
-                        <TextBlock Text="{Binding PreviewInfo.StatusMessage}" Style="{StaticResource Caption}" TextAlignment="Center" Margin="0,8,0,0" />
+                        <TextBlock Text="{Binding PreviewInfo.Summary}"
+                                   Style="{StaticResource Caption}"
+                                   Margin="0,4,0,0"
+                                   Visibility="{Binding PreviewInfo.Summary, Converter={StaticResource TextToVisibility}}" />
+                        <Border Style="{StaticResource Card}" Padding="14,12" Margin="0,14,0,0">
+                            <DockPanel>
+                                <TextBlock Text="&#xF167;" Style="{StaticResource Glyph}" VerticalAlignment="Top" Margin="0,2,12,0" Foreground="{StaticResource SecondaryTextBrush}" />
+                                <TextBlock Text="{Binding PreviewInfo.StatusMessage}" FontSize="13" TextWrapping="Wrap" />
+                            </DockPanel>
+                        </Border>
                         <StackPanel Margin="0,14,0,0" Visibility="{Binding PreviewInfo.FilePath, Converter={StaticResource TextToVisibility}}">
                             <Border Height="1" Background="{StaticResource LineBrush}" Margin="0,0,0,12" />
                             <DockPanel>
@@ -541,6 +552,7 @@
                             BorderBrush="{StaticResource LineBrush}"
                             BorderThickness="1"
                             CornerRadius="6"
+                            Margin="20,0,20,18"
                             VerticalAlignment="Stretch"
                             Visibility="{Binding PreviewInfo.TextContent, Converter={StaticResource TextToVisibility}}">
                         <TextBox Text="{Binding PreviewInfo.TextContent, Mode=OneWay}"

@@ -88,7 +88,17 @@ public class MainWindowTests
         Assert.Equal(2, tab.SelectedFileSystemObjects.Count);
         Assert.Equal(offset, scroll.VerticalOffset);
 
+        list.UnselectAll();
         tab.IsPreviewPaneVisible = true;
+        await Task.Delay(200);
+        Save(window, "folderinfo");
+        Assert.Equal("207 פריטים", tab.PreviewInfo.Summary);
+        list.SelectedItem = list.Items[150];
+        await Ui.Until(() => tab.PreviewInfo.TextContent == "שלום");
+        Assert.Null(tab.PreviewInfo.Summary);
+        list.SelectedItems.Add(list.Items[152]);
+        Assert.Contains("2 פריטים", tab.PreviewInfo.FileName);
+        list.SelectedItems.Remove(list.Items[152]);
         await Ui.Until(() => tab.PreviewInfo.TextContent == "שלום");
         tab.ToggleAddressBarEditCmd.Execute(null);
         await Task.Delay(200);

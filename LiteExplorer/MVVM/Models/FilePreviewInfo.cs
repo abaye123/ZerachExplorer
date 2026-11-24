@@ -49,6 +49,14 @@ internal class FilePreviewInfo : ViewModel
         set => SetValue(ref lastModifiedFormatted, value);
     }
 
+    private string? summary;
+    /// <summary>Number of items in a folder or in the selection.</summary>
+    public string? Summary
+    {
+        get => summary;
+        set => SetValue(ref summary, value);
+    }
+
     private string? textContent;
     public string? TextContent
     {
@@ -91,6 +99,7 @@ internal class FilePreviewInfo : ViewModel
         FilePath = null;
         FileSizeFormatted = null;
         LastModifiedFormatted = null;
+        Summary = null;
         TextContent = null;
         ImagePreview = null;
         IconPreview = null;

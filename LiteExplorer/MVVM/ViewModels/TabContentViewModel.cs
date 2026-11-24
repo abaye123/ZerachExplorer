@@ -259,11 +259,14 @@ internal sealed class TabContentViewModel : ViewModel, IExplorerTab, IDisposable
                 return string.Empty;
 
             string text = selectedItems.Count == 1 ? "פריט 1 נבחר" : $"{selectedItems.Count} פריטים נבחרו";
-            return selectedItems.All(item => !item.IsDirectory)
-                ? $"{text}   \u200E{BytesToNormalSize.FormatBytes(selectedItems.Sum(item => item.Size))}\u200E"
-                : text;
+            return SelectedSizeText.Length == 0 ? text : $"{text}   {SelectedSizeText}";
         }
     }
+
+    // Folders have no known size, so a selection that includes one has no total.
+    private string SelectedSizeText => selectedItems.Count == 0 || selectedItems.Any(item => item.IsDirectory)
+        ? string.Empty
+        : $"\u200E{BytesToNormalSize.FormatBytes(selectedItems.Sum(item => item.Size))}\u200E";
 
     public string EmptyText => IsLoading || !itemsView.IsEmpty ? string.Empty
         : SearchText.Length > 0 ? "לא נמצאו פריטים התואמים לחיפוש."
@@ -292,8 +295,12 @@ internal sealed class TabContentViewModel : ViewModel, IExplorerTab, IDisposable
 
     public void SetSelectedItems(IEnumerable<FileSystemObject> items)
     {
+        bool hadSeveral = selectedItems.Count > 1;
         selectedItems.Clear();
         selectedItems.AddRange(items);
+        // A change of a single selected item arrives through CurrentFileSystemObject.
+        if (hadSeveral || selectedItems.Count > 1)
+            UpdatePreview();
         OnPropertyChanged(nameof(SelectionText));
         CommandManager.InvalidateRequerySuggested();
     }
@@ -562,9 +569,16 @@ internal sealed class TabContentViewModel : ViewModel, IExplorerTab, IDisposable
         else
             TabTitle = Path.GetFileName(TabPath);
 
-        TabIcon = IsHome ? null
-            : Path.GetPathRoot(TabPath) == TabPath ? ShellIcons.ForLocation(TabPath!).Small
-            : ShellIcons.ForFolder().Small;
+        TabIcon = IsHome ? null : LocationIcon.Small;
+        UpdateSummary();
+    }
+
+    private ShellIcon LocationIcon => !IsHome && Path.GetPathRoot(TabPath) == TabPath ? ShellIcons.ForLocation(TabPath!) : ShellIcons.ForFolder();
+
+    private void UpdateSummary()
+    {
+        if (IsPreviewPaneVisible && CurrentFileSystemObject == null && selectedItems.Count == 0)
+            UpdatePreview();
     }
 
     private void NotifyViewChanged()
@@ -579,6 +593,7 @@ internal sealed class TabContentViewModel : ViewModel, IExplorerTab, IDisposable
     {
         OnPropertyChanged(nameof(ItemsText));
         OnPropertyChanged(nameof(EmptyText));
+        UpdateSummary();
     }
 
     private void UpdateBreadcrumbs()
@@ -588,7 +603,26 @@ internal sealed class TabContentViewModel : ViewModel, IExplorerTab, IDisposable
             Breadcrumbs.Add(item);
     }
 
-    private void UpdatePreview() => _ = preview.LoadAsync(IsPreviewPaneVisible ? CurrentFileSystemObject : null);
+    private void UpdatePreview()
+    {
+        if (!IsPreviewPaneVisible)
+        {
+            preview.Clear();
+        }
+        else if (selectedItems.Count > 1)
+        {
+            var first = selectedItems[0];
+            preview.ShowSummary($"{selectedItems.Count} פריטים נבחרו", first.LargeImage ?? first.Image, SelectedSizeText, "בחר קובץ יחיד כדי לראות את תוכנו ופרטיו.");
+        }
+        else if (CurrentFileSystemObject != null)
+        {
+            _ = preview.LoadAsync(CurrentFileSystemObject);
+        }
+        else
+        {
+            preview.ShowSummary(TabTitle ?? string.Empty, LocationIcon.Large, ItemsText, "בחר קובץ כדי לראות את תוכנו ופרטיו.");
+        }
+    }
 
     private void RefreshSidebar() => _ = sidebar.RefreshAsync();
 

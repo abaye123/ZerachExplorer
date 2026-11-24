@@ -2,6 +2,7 @@ using LiteExplorer.Infrastructure.Converters;
 using LiteExplorer.MVVM.Models;
 using LiteExplorer.Services;
 using System.IO;
+using System.Windows.Media;
 
 namespace LiteExplorer.MVVM.ViewModels;
 
@@ -21,6 +22,21 @@ internal sealed class PreviewViewModel : IDisposable
     {
         Cancel();
         Info.Clear();
+    }
+
+    /// <summary>Describes a folder or several items, when no single file is selected.</summary>
+    public void ShowSummary(string name, ImageSource? icon, string summary, string hint)
+    {
+        Cancel();
+        // Only what changed is replaced, so that a folder being loaded does not flicker.
+        if (Info.Summary == null)
+            Info.Clear();
+
+        Info.Type = PreviewType.Directory;
+        Info.FileName = name;
+        Info.IconPreview = icon;
+        Info.Summary = summary;
+        Info.StatusMessage = hint;
     }
 
     public async Task LoadAsync(FileSystemObject? item)
