@@ -45,6 +45,10 @@ jobs:
         shell: pwsh
         run: ./scripts/build-release.ps1
 
+      - name: Verify packages
+        shell: pwsh
+        run: ./scripts/verify-packages.ps1
+
       - name: Upload unsigned packages
         uses: actions/upload-artifact@v4
         with:

@@ -108,6 +108,10 @@ jobs:
         shell: pwsh
         run: Remove-Item "Cert:\CurrentUser\My\$env:THUMBPRINT" -DeleteKey -Force -ErrorAction SilentlyContinue
 
+      - name: Verify packages
+        shell: pwsh
+        run: ./scripts/verify-packages.ps1
+
       - name: Publish release
         shell: pwsh
         env:
