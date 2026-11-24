@@ -31,10 +31,10 @@ jobs:
           global-json-file: global.json
 
       - name: Build
-        run: dotnet build LiteExplorer.sln --configuration Release
+        run: dotnet build ZerachExplorer.sln --configuration Release
 
       - name: Test
-        run: dotnet test LiteExplorer.sln --configuration Release --no-build
+        run: dotnet test ZerachExplorer.sln --configuration Release --no-build
 
       - name: Install Inno Setup if missing
         shell: pwsh

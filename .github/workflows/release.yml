@@ -53,9 +53,9 @@ jobs:
         if: steps.version.outputs.exists == 'false'
         shell: pwsh
         run: |
-          dotnet build LiteExplorer.sln --configuration Release
+          dotnet build ZerachExplorer.sln --configuration Release
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          dotnet test LiteExplorer.sln --configuration Release --no-build
+          dotnet test ZerachExplorer.sln --configuration Release --no-build
 
   release:
     name: Build, sign & publish

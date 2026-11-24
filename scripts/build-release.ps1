@@ -52,7 +52,7 @@ if ($Thumbprint) { $signTool = Find-SignTool }
 if (Test-Path $dist) { Remove-Item $dist -Recurse -Force }
 New-Item -ItemType Directory -Force $folder, $single | Out-Null
 
-$project = Join-Path $root "LiteExplorer\LiteExplorer.csproj"
+$project = Join-Path $root "ZerachExplorer\ZerachExplorer.csproj"
 $common = @("--configuration", "Release", "--runtime", "win-x64", "--self-contained", "true", "-p:DebugType=none", "--nologo")
 
 # The installer gets plain files: a single-file executable unpacks libraries into a folder the user can write to.
