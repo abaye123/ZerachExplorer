@@ -26,10 +26,8 @@ public class AuditService : IAuditService
         }
         else
         {
-            string programData = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
-            string baseDir = string.IsNullOrWhiteSpace(programData)
-                ? AppDomain.CurrentDomain.BaseDirectory
-                : Path.Combine(programData, "ZerachExplorer");
+            // The shared configuration folder is read-only for regular users.
+            string baseDir = CrashLogger.LogDirectory;
 
             try
             {

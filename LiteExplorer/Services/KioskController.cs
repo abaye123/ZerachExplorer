@@ -12,12 +12,19 @@ public class KioskController : IKioskController
     public bool IsKioskModeEnabled { get; set; }
     public bool PreventAppExit { get; set; }
 
+    public void Configure(AppConfiguration configuration)
+    {
+        IsKioskModeEnabled = configuration.KioskModeEnabled;
+        PreventAppExit = configuration.PreventAppExit;
+    }
+
     public void ApplyKioskWindowSettings(Window window)
     {
         if (window == null) return;
 
         if (IsKioskModeEnabled)
         {
+            window.WindowState = WindowState.Normal;
             window.WindowStyle = WindowStyle.None;
             window.ResizeMode = ResizeMode.NoResize;
             window.WindowState = WindowState.Maximized;
@@ -26,6 +33,7 @@ public class KioskController : IKioskController
         {
             window.WindowStyle = WindowStyle.SingleBorderWindow;
             window.ResizeMode = ResizeMode.CanResize;
+            window.WindowState = WindowState.Normal;
         }
 
         AuditService.Instance.Log(
@@ -42,16 +50,15 @@ public class KioskController : IKioskController
             return true;
         }
 
-        e.Cancel = true;
-
         if (authenticateAdmin != null && authenticateAdmin())
         {
+            // The window is already closing; calling Close again would throw.
             PreventAppExit = false;
             AuditService.Instance.Log(AuditEventType.AdminAccess, "AppExit", "Admin authorized application shutdown", true);
-            window?.Close();
             return true;
         }
 
+        e.Cancel = true;
         AuditService.Instance.Log(AuditEventType.SecurityBlocked, "AppExit", "Unauthorized attempt to close kiosk application", false);
         return false;
     }

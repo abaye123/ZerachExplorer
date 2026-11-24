@@ -8,6 +8,7 @@ public interface IKioskController
 {
     bool IsKioskModeEnabled { get; set; }
     bool PreventAppExit { get; set; }
+    void Configure(LiteExplorer.MVVM.Models.AppConfiguration configuration);
     void ApplyKioskWindowSettings(Window window);
     bool HandleWindowClosing(Window window, CancelEventArgs e, Func<bool> authenticateAdmin);
 }

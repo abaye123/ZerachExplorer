@@ -7,7 +7,7 @@ public static class SecurityHelper
 {
     private const int SaltByteSize = 24;
     private const int HashByteSize = 32;
-    private const int Iterations = 10000;
+    private const int Iterations = 600_000;
 
     public static void HashPassword(string password, out string hash, out string salt)
     {

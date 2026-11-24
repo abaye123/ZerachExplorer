@@ -36,13 +36,16 @@ internal class MainWindowViewModel : ViewModel
         Tabs.Add(initialTab);
         CurrentTab = initialTab;
 
-        CloseAppCmd = new ActionCommand(_ => Application.Current.Shutdown());
+        CloseAppCmd = new ActionCommand(_ => CloseMainWindow());
         AddTabCmd = new ActionCommand(OnAddTabCmdExecuted);
         CloseTabCmd = new ActionCommand(OnCloseTabCmdExecuted);
     }
 
     private static TabContentViewModel CreateTabViewModel() =>
         App.Container?.GetService<TabContentViewModel>() ?? new TabContentViewModel();
+
+    // Application.Shutdown ignores a cancelled Closing event and would bypass exit protection.
+    private static void CloseMainWindow() => Application.Current.MainWindow?.Close();
 
     private void OnAddTabCmdExecuted(object p)
     {
@@ -56,17 +59,15 @@ internal class MainWindowViewModel : ViewModel
         var closeTab = (p as TabContentViewModel) ?? CurrentTab;
         if (closeTab != null && Tabs.Contains(closeTab))
         {
+            if (Tabs.Count == 1)
+            {
+                CloseMainWindow();
+                return;
+            }
+
             closeTab.Dispose();
             Tabs.Remove(closeTab);
-
-            if (Tabs.Count == 0)
-            {
-                Application.Current.Shutdown();
-            }
-            else
-            {
-                CurrentTab = Tabs.LastOrDefault();
-            }
+            CurrentTab = Tabs.LastOrDefault();
         }
     }
 }

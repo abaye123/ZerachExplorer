@@ -23,11 +23,18 @@ public partial class App
     {
         base.OnStartup(e);
 
+        if (e.Args.Length == 3 && e.Args[0] == ProtectedConfigurationStore.ApplyArgument)
+        {
+            Shutdown(ProtectedConfigurationStore.RunElevatedSave(e.Args[1], e.Args[2]));
+            return;
+        }
+
         var configService = Container.GetService<IConfigurationService>();
         var pathPolicy = Container.GetService<IPathPolicy>();
         if (configService != null && pathPolicy != null)
         {
             configService.ApplyToPolicy(pathPolicy);
+            KioskController.Instance.Configure(configService.Configuration);
         }
 
         Container.GetService<MainWindow>()?.Show();
@@ -77,7 +84,7 @@ public partial class App
 
     internal static void ConfigureServices(IServiceCollection services)
     {
-        services.AddSingleton<IConfigurationService, ConfigurationService>();
+        services.AddSingleton<IConfigurationService>(_ => new ConfigurationService());
         // Constructed explicitly: the container would inject an empty extension list.
         services.AddSingleton<IPathPolicy>(_ => new PathPolicy());
         services.AddSingleton<IAuditService>(_ => AuditService.Instance);

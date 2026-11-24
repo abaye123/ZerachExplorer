@@ -1,5 +1,6 @@
 using LiteExplorer.MVVM.Models;
 using LiteExplorer.Services;
+using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.ComponentModel;
 using System.Windows;
@@ -27,7 +28,13 @@ public partial class MainWindow
 
     private void OnWindowClosing(object sender, CancelEventArgs e)
     {
-        KioskController.Instance.HandleWindowClosing(this, e, () => AdminPasswordDialog.Prompt(this));
+        KioskController.Instance.HandleWindowClosing(this, e, () => AuthenticateExit());
+    }
+
+    private bool AuthenticateExit()
+    {
+        var config = App.Container.GetRequiredService<IConfigurationService>();
+        return AdminPasswordDialog.Prompt(config, this);
     }
 
     protected override void OnSourceInitialized(EventArgs e)

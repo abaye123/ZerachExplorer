@@ -10,6 +10,17 @@ public class PathPermissions
     public bool CanDelete { get; set; } = true;
     public bool CanCreateDirectory { get; set; } = true;
 
+    public static PathPermissions CreateDenied() => new()
+    {
+        CanList = false,
+        CanOpen = false,
+        CanCopyFrom = false,
+        CanCopyTo = false,
+        CanRename = false,
+        CanDelete = false,
+        CanCreateDirectory = false
+    };
+
     public static PathPermissions CreateStandard() => new()
     {
         CanList = true,

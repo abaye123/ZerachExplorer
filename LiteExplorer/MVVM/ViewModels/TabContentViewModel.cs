@@ -776,8 +776,10 @@ internal class TabContentViewModel : ViewModel, IDisposable
                 ? "הפריטים יועברו לסל המיחזור."
                 : "שים לב: אין בכונן זה סל מיחזור. המחיקה סופית ולא ניתן יהיה לשחזר!";
 
+            string details = DescribeFolderContents(allowed.Where(Directory.Exists));
+
             var answer = MessageBox.Show(
-                $"האם אתה בטוח שברצונך למחוק {subject}?\n\n{consequence}",
+                $"האם אתה בטוח שברצונך למחוק {subject}?\n\n{details}{consequence}",
                 recyclable ? "אישור מחיקה" : "אזהרת מחיקה לצמיתות",
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Warning,
@@ -804,6 +806,37 @@ internal class TabContentViewModel : ViewModel, IDisposable
         {
             MessageBox.Show($"שגיאה במחיקת חלק מהפריטים:\n{string.Join("\n", errors.Take(5))}", "שגיאה במחיקה", MessageBoxButton.OK, MessageBoxImage.Warning, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
         }
+    }
+
+    private static string DescribeFolderContents(IEnumerable<string> directories)
+    {
+        int files = 0, folders = 0, hidden = 0;
+        bool any = false;
+        var options = new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true, AttributesToSkip = 0 };
+
+        foreach (var directory in directories)
+        {
+            any = true;
+            try
+            {
+                foreach (var info in new DirectoryInfo(directory).EnumerateFileSystemInfos("*", options))
+                {
+                    if ((info.Attributes & (FileAttributes.Hidden | FileAttributes.System)) != 0) hidden++;
+                    if ((info.Attributes & FileAttributes.Directory) != 0) folders++; else files++;
+                }
+            }
+            catch (IOException ex)
+            {
+                CrashLogger.LogException(ex, $"Counting contents of {directory}");
+            }
+        }
+
+        if (!any) return string.Empty;
+
+        string text = $"תוכן התיקיות: {files} קבצים, {folders} תתי-תיקיות.\n";
+        if (hidden > 0)
+            text += $"שים לב: כולל {hidden} פריטים מוסתרים או פריטי מערכת.\n";
+        return text + "\n";
     }
 
     private void OnRenameCmdExecuted(object p)
@@ -1023,14 +1056,10 @@ internal class TabContentViewModel : ViewModel, IDisposable
 
     private void OnOpenAdminCmdExecuted(object p)
     {
-        var authDialog = new AdminPasswordDialog(configurationService);
-        if (Application.Current?.MainWindow != null)
+        if (AdminPasswordDialog.Prompt(configurationService, Application.Current?.MainWindow))
         {
-            authDialog.Owner = Application.Current.MainWindow;
-        }
+            configurationService.ApplyToPolicy(pathPolicy);
 
-        if (authDialog.ShowDialog() == true && authDialog.IsAuthenticated)
-        {
             var adminWindow = new AdminSettingsWindow(configurationService, pathPolicy);
             if (Application.Current?.MainWindow != null)
             {

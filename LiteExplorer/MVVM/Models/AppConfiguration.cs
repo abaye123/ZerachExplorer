@@ -5,6 +5,8 @@ namespace LiteExplorer.MVVM.Models;
 public class AppConfiguration
 {
     public KioskProfile Profile { get; set; } = KioskProfile.Standard;
+    public bool KioskModeEnabled { get; set; }
+    public bool PreventAppExit { get; set; }
     public string AdminPasswordHash { get; set; } = string.Empty;
     public string AdminPasswordSalt { get; set; } = string.Empty;
     public List<string> AllowedExtensions { get; set; } = new()

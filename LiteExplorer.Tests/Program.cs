@@ -1,4 +1,4 @@
-﻿using LiteExplorer.Helpers;
+using LiteExplorer.Helpers;
 using LiteExplorer.MVVM.Models;
 using LiteExplorer.MVVM.ViewModels;
 using LiteExplorer.Services;
@@ -204,7 +204,7 @@ public class Program
             var configService = new ConfigurationService(tempConfigPath);
             var loadedConfig = configService.Load();
             Assert(loadedConfig != null, "ConfigurationService loads default configuration when file does not exist");
-            Assert(configService.VerifyPassword("admin123"), "Default admin password verifies successfully");
+            Assert(!configService.HasPassword && !configService.VerifyPassword("admin123"), "There is no default admin password");
 
             loadedConfig.Profile = KioskProfile.ReadOnly;
             loadedConfig.AllowedExtensions = new System.Collections.Generic.List<string> { ".docx", ".pdf" };
@@ -221,7 +221,7 @@ public class Program
             Assert(reloadedConfig.Permissions.CanCopyTo == false && reloadedConfig.Permissions.CanDelete == false, "Configuration persistence retains ReadOnly permissions");
 
             // Password change
-            secondConfigService.ChangePassword("NewAdminPass456");
+            secondConfigService.SetPassword(secondConfigService.Configuration, "NewAdminPass456");
             Assert(secondConfigService.VerifyPassword("NewAdminPass456"), "ConfigurationService verifies updated password");
             Assert(!secondConfigService.VerifyPassword("admin123"), "ConfigurationService rejects old password after update");
         }
@@ -579,8 +579,8 @@ public class Program
             File.WriteAllText(corruptConfigPath, "{ invalid json !!!");
             var corruptConfigSvc = new ConfigurationService(corruptConfigPath);
             var fallbackCfg = corruptConfigSvc.Load();
-            Assert(fallbackCfg != null && fallbackCfg.Profile == KioskProfile.Standard,
-                "ConfigurationService falls back to Standard profile on corrupted JSON");
+            Assert(fallbackCfg != null && corruptConfigSvc.IsLocked && !fallbackCfg.Permissions.CanList,
+                "ConfigurationService denies everything on corrupted JSON");
         }
         finally
         {

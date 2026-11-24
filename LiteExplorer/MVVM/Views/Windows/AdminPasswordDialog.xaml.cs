@@ -1,3 +1,5 @@
+using LiteExplorer.MVVM.Models;
+using System;
 using LiteExplorer.Services;
 using System.Windows;
 using System.Windows.Input;
@@ -10,11 +12,15 @@ public partial class AdminPasswordDialog : Window
 
     public bool IsAuthenticated { get; private set; }
 
-    public static bool Prompt(Window owner = null)
+    /// <summary>
+    /// Authenticates an administrator, or runs first-time setup when no password exists yet.
+    /// </summary>
+    public static bool Prompt(IConfigurationService configService, Window? owner)
     {
-        var config = ConfigurationService.Instance;
-        var dialog = new AdminPasswordDialog(config);
-        if (owner != null) dialog.Owner = owner;
+        if (!configService.HasPassword)
+            return new SetPasswordDialog(configService) { Owner = owner }.ShowDialog() == true;
+
+        var dialog = new AdminPasswordDialog(configService) { Owner = owner };
         return dialog.ShowDialog() == true && dialog.IsAuthenticated;
     }
 
@@ -47,15 +53,19 @@ public partial class AdminPasswordDialog : Window
     private void ValidateAndConfirm()
     {
         string entered = TxtPassword.Password ?? string.Empty;
-        if (configService.VerifyPassword(entered))
+        if (configService.VerifyPassword(entered, out var retryAfter))
         {
             IsAuthenticated = true;
+            AuditService.Instance.Log(AuditEventType.AdminAccess, "Login", "Administrator authenticated", true);
             DialogResult = true;
             Close();
         }
         else
         {
-            TxtError.Text = "הסיסמה שהוזנה שגויה.";
+            AuditService.Instance.Log(AuditEventType.AdminAccess, "Login", "Wrong password", false);
+            TxtError.Text = retryAfter > TimeSpan.Zero
+                ? $"יותר מדי ניסיונות. נסה שוב בעוד {Math.Ceiling(retryAfter.TotalSeconds)} שניות."
+                : "הסיסמה שהוזנה שגויה.";
             TxtError.Visibility = Visibility.Visible;
             TxtPassword.SelectAll();
             TxtPassword.Focus();

@@ -31,7 +31,7 @@ public partial class AdminSettingsWindow : Window
     {
         this.configService = configService;
         this.pathPolicy = pathPolicy;
-        this.workingConfig = configService.Configuration;
+        this.workingConfig = configService.CreateEditableCopy();
 
         InitializeComponent();
 
@@ -61,6 +61,8 @@ public partial class AdminSettingsWindow : Window
         }
 
         var p = workingConfig.Permissions ?? PathPermissions.CreateStandard();
+        ChkKioskMode.IsChecked = workingConfig.KioskModeEnabled;
+        ChkPreventExit.IsChecked = workingConfig.PreventAppExit;
         ChkCanList.IsChecked = p.CanList;
         ChkCanOpen.IsChecked = p.CanOpen;
         ChkCanCopyFrom.IsChecked = p.CanCopyFrom;
@@ -195,9 +197,9 @@ public partial class AdminSettingsWindow : Window
         string newPass = TxtNewPassword.Password ?? string.Empty;
         string confirmPass = TxtConfirmPassword.Password ?? string.Empty;
 
-        if (string.IsNullOrWhiteSpace(newPass))
+        if (newPass.Length < ConfigurationService.MinimumPasswordLength)
         {
-            TxtPasswordStatus.Text = "הסיסמה אינה יכולה להיות ריקה.";
+            TxtPasswordStatus.Text = $"הסיסמה חייבת להכיל לפחות {ConfigurationService.MinimumPasswordLength} תווים.";
             TxtPasswordStatus.Foreground = System.Windows.Media.Brushes.Red;
             TxtPasswordStatus.Visibility = Visibility.Visible;
             return;
@@ -211,7 +213,7 @@ public partial class AdminSettingsWindow : Window
             return;
         }
 
-        configService.ChangePassword(newPass);
+        configService.SetPassword(workingConfig, newPass);
         TxtPasswordStatus.Text = "הסיסמה עודכנה בהצלחה (תשמר בלחיצה על שמור).";
         TxtPasswordStatus.Foreground = System.Windows.Media.Brushes.Green;
         TxtPasswordStatus.Visibility = Visibility.Visible;
@@ -246,11 +248,16 @@ public partial class AdminSettingsWindow : Window
         workingConfig.AllowedExtensions = extensions.ToList();
         workingConfig.AllowedExplicitDirectories = directories.ToList();
 
+        workingConfig.KioskModeEnabled = ChkKioskMode.IsChecked == true;
+        workingConfig.PreventAppExit = ChkPreventExit.IsChecked == true;
         workingConfig.BlockedDriveRoots = drives.Where(d => d.IsBlocked).Select(d => d.Root).ToList();
 
         if (configService.Save(workingConfig, out string error))
         {
             configService.ApplyToPolicy(pathPolicy);
+            KioskController.Instance.Configure(configService.Configuration);
+            KioskController.Instance.ApplyKioskWindowSettings(Application.Current.MainWindow);
+            AuditService.Instance.Log(AuditEventType.AdminAccess, "Settings", "Settings saved", true);
             DialogResult = true;
             Close();
         }

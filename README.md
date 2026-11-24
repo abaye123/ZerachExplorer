@@ -10,10 +10,10 @@
 * סיומות הקבצים המאושרות הם: `doc`, `docx`, `xls`, `xlsx`, `pdf`, `txt`, `csv`, `one`, `onetoc2`  (וורד, אקסל, וואן נוט).  
 * מחיקה ושינוי שם לקבצים (ללא שינוי סיומת הקובץ).
 
-## הגדרות מנהל וסיסמת ברירת מחדל:
+## הגדרות מנהל וסיסמה:
 
 * לפתיחת מסך הגדרות המנהל (ניהול פרופילי קיוסק, הרשאות וסיומות מאושרות): לחיצה על כפתור ההגדרות בסרגל או קיצור המקלדת `Ctrl+Shift+A`.
-* **סיסמת מנהל ברירת מחדל:** `admin123` (יש להחליף את הסיסמה מיד בהגדרה הראשונה בעמדה; הסיסמה נשמרת מוצפנת בתקן PBKDF2 בקובץ `%ProgramData%\ZerachExplorer\config.json`).
+* **סיסמת מנהל:** אין סיסמת ברירת מחדל. בכניסה הראשונה להגדרות קובעים סיסמה, באישור מנהל Windows. כל שמירת הגדרות דורשת אישור כזה, והקובץ `%ProgramData%\ZerachExplorer\config.json` ניתן לשינוי רק על ידי מנהלים.
 
 ## קרדיט:
 
@@ -44,10 +44,10 @@ ZerachExplorer is a modern and secure file explorer designed for public computer
 * Approved file extensions: `doc`, `docx`, `xls`, `xlsx`, `pdf`, `txt`, `csv`, `one`, `onetoc2` (Word, Excel, OneNote).  
 * Deleting and renaming files (without changing the file extension).
 
-## Admin Settings & Default Password:
+## Admin Settings & Password:
 
 * To open the Admin Settings window (kiosk profiles, granular permissions, and allowed extensions): click the Admin Settings button in the toolbar or press `Ctrl+Shift+A`.
-* **Default admin password:** `admin123` (change this password immediately during initial workstation setup; stored PBKDF2-hashed in `%ProgramData%\ZerachExplorer\config.json`).
+* **Admin password:** there is no default password. It is set on the first visit to the settings and requires Windows administrator approval, as does every later save. `%ProgramData%\ZerachExplorer\config.json` is writable by administrators only.
 
 ## Credit:
 
