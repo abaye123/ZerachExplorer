@@ -160,7 +160,7 @@ public class MainWindowTests
 
         var admin = new AdminSettingsWindow(configuration, policy);
         await ShowAsync(admin, "admin0", keepOpen: true);
-        for (int page = 1; page < 7; page++)
+        for (int page = 1; page < 8; page++)
         {
             Find<TabControl>(admin).Single().SelectedIndex = page;
             await Task.Delay(60);

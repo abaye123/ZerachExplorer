@@ -63,7 +63,8 @@ Invoke-Checked { dotnet publish $project @common -p:PublishSingleFile=true -p:In
 $unsigned = Get-ChildItem $folder -Recurse -Include *.exe, *.dll | Where-Object { (Get-AuthenticodeSignature $_.FullName).Status -eq "NotSigned" }
 Add-Signature ($unsigned.FullName)
 
-$portable = Join-Path $dist "ZerachExplorer_portable_$version.exe"
+# The names carry no version, so that links to the latest release never change.
+$portable = Join-Path $dist "ZerachExplorer_portable.exe"
 Copy-Item (Join-Path $single "ZerachExplorer.exe") $portable
 Add-Signature $portable
 
@@ -74,7 +75,7 @@ if ($Thumbprint) {
 }
 Invoke-Checked { & $iscc @arguments (Join-Path $root "installer\ZerachExplorer.iss") }
 
-$setup = Join-Path $dist "ZerachExplorer_setup_$version.exe"
+$setup = Join-Path $dist "ZerachExplorer_setup.exe"
 if ($Thumbprint) { Assert-Signature $setup }
 
 Get-ChildItem $dist -File -Filter *.exe | ForEach-Object {

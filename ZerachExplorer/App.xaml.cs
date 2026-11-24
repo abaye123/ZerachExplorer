@@ -37,6 +37,12 @@ public partial class App
             return;
         }
 
+        if (e.Args.Length == 2 && e.Args[0] == ProtectedConfigurationStore.ImportArgument)
+        {
+            Shutdown(ProtectedConfigurationStore.RunImport(e.Args[1]));
+            return;
+        }
+
         var services = new ServiceCollection();
         ConfigureServices(services);
         var provider = services.BuildServiceProvider();

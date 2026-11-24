@@ -43,8 +43,7 @@ public class ConfigurationService : IConfigurationService
     /// </summary>
     public bool IsLocked { get; private set; }
 
-    public bool HasPassword =>
-        !string.IsNullOrEmpty(Configuration.AdminPasswordHash) && !string.IsNullOrEmpty(Configuration.AdminPasswordSalt);
+    public bool HasPassword => SettingsFile.HasPassword(Configuration);
 
     public AppConfiguration Load()
     {
@@ -83,7 +82,7 @@ public class ConfigurationService : IConfigurationService
 
         try
         {
-            byte[] content = JsonSerializer.SerializeToUtf8Bytes(configuration, JsonOptions);
+            byte[] content = Serialize(configuration);
 
             if (isProtected)
             {
@@ -113,7 +112,7 @@ public class ConfigurationService : IConfigurationService
     public AppConfiguration CreateEditableCopy()
     {
         // A locked configuration denies everything; repairing it starts from the normal defaults.
-        return IsLocked ? new AppConfiguration() : Parse(JsonSerializer.SerializeToUtf8Bytes(Configuration, JsonOptions));
+        return IsLocked ? new AppConfiguration() : Parse(Serialize(Configuration));
     }
 
     public bool VerifyPassword(string password, out TimeSpan retryAfter)
@@ -166,6 +165,8 @@ public class ConfigurationService : IConfigurationService
         Replace(policy.BlockedVolumeSerialNumbers, config.BlockedVolumeSerialNumbers);
         policy.SetAllowedExtensions(config.AllowedExtensions);
     }
+
+    internal static byte[] Serialize(AppConfiguration configuration) => JsonSerializer.SerializeToUtf8Bytes(configuration, JsonOptions);
 
     internal static AppConfiguration Parse(byte[] content)
     {

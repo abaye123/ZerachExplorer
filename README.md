@@ -1,83 +1,114 @@
 # ZerachExplorer | זרח אקספלורר
 
-זרח אקספלורר הוא סייר קבצים מודרני ומוגן עבור עמדות מחשבים ציבוריות.
+[עברית](#עברית) | [English](#english)
 
-## תכונות:
+## עברית
 
-* אין גישה לכונן C, ולתיקיות וקבצים מוסתרים.  
-* אין גישה לכוננים של תוכנת "אוצר החוכמה".  
-* פתיחת והעתקת קבצים מהסוגים המאושרים בלבד.  
-* סיומות הקבצים המאושרות הם: `doc`, `docx`, `xls`, `xlsx`, `pdf`, `txt`, `csv`, `one`, `onetoc2`  (וורד, אקסל, וואן נוט).  
-* העתקה, גזירה, הדבקה, מחיקה, תיקייה חדשה ושינוי שם (ללא שינוי סיומת הקובץ).
-* עיצוב בסגנון Windows 11, לשוניות, תצוגת אריחים, חיפוש, מיון ותצוגה מקדימה.
-* הוצאה בטוחה של כונן USB.
-* פרופילי עמדה, הרשאות, חסימת כוננים, מצב קיוסק ויומן פעולות.
+<div dir="rtl">
 
-## התקנה:
+סייר קבצים מודרני ומוגן לעמדות מחשב ציבוריות, בעיצוב ובהתנהגות של סייר Windows 11.
 
-* `ZerachExplorer_setup_x.y.z.exe` - מתקין, מומלץ לעמדות ציבוריות. משדרג גם גרסאות קודמות.
-* `ZerachExplorer_portable_x.y.z.exe` - קובץ אחד ללא התקנה.
-* דרוש Windows 10 ומעלה (64 סיביות). אין צורך להתקין .NET.
+### הורדה
 
-## הגדרות מנהל וסיסמה:
+- [מתקין](https://github.com/abaye123/ZerachExplorer/releases/latest/download/ZerachExplorer_setup.exe) - מומלץ לעמדות ציבוריות, משדרג גם גרסאות קודמות
+- [קובץ נייד](https://github.com/abaye123/ZerachExplorer/releases/latest/download/ZerachExplorer_portable.exe) - ללא התקנה
+- [כל הגרסאות](https://github.com/abaye123/ZerachExplorer/releases)
 
-* לפתיחת מסך הגדרות המנהל (ניהול פרופילי קיוסק, הרשאות וסיומות מאושרות): לחיצה על כפתור ההגדרות בסרגל או קיצור המקלדת `Ctrl+Shift+A`.
-* **סיסמת מנהל:** אין סיסמת ברירת מחדל. בכניסה הראשונה להגדרות קובעים סיסמה, באישור מנהל Windows. כל שמירת הגדרות דורשת אישור כזה, והקובץ `%ProgramData%\ZerachExplorer\config.json` ניתן לשינוי רק על ידי מנהלים.
+Windows 10 ומעלה, 64 סיביות. אין צורך להתקין ‎.NET.
 
-## קרדיט:
+### תכונות
 
-התוכנה הזו קיימת בזכות הפרויקט הנהדר הזה:  
-https://github.com/tempous/LiteExplorer
+**הגנה**
 
-רוב החידושים בגרסה 2.0.0 פותחו על ידי [המלאך (Amlaach)](https://github.com/Amlaach).
+- אין גישה לכונן המערכת, לתיקיות ולקבצים מוסתרים ולכונני "אוצר החכמה".
+- נפתחים ומועתקים רק קבצים מהסוגים המאושרים.
+- הרשאות נפרדות לעיון, פתיחה, העתקה, הדבקה, שינוי שם, מחיקה ויצירת תיקיות.
+- חסימת כוננים, תיקיות מאושרות, מצב קיוסק ויציאה בסיסמה.
+- ההגדרות מוגנות בסיסמה ובאישור מנהל Windows, ויש יומן פעולות.
 
-## רישיון:
+**קבצים**
 
-קוד המקור של התוכנה זמין בכתובת:  
-https://github.com/abaye123/ZerachExplorer  
-תחת רישיון BSD 3-Clause License.
+- העתקה, גזירה והדבקה, גם מול סייר Windows, עם חלון התקדמות, קצב, השהיה וביטול.
+- טיפול בהתנגשויות, סל מיחזור, תיקיות חדשות ושינוי שם (ללא שינוי סיומת).
+- הוצאה בטוחה של USB.
+
+**ממשק**
+
+- כרטיסיות, היסטוריה, שורת כתובת, חיפוש, מיון, תצוגת פרטים וסמלים.
+- בחירה במלבן ובתיבות סימון, ותצוגה מקדימה.
+- ייבוא וייצוא הגדרות להגדרה מהירה של מחשבים רבים.
+
+### מדריך
+
+[התקנה, הגדרה ושימוש](docs/guide.he.md) | [אבטחה והקשחת העמדה](SECURITY.md) | [יומן שינויים](CHANGELOG.md)
+
+### קרדיט
+
+- [המלאך (Amlaach)](https://github.com/Amlaach) פיתח את רוב החידושים בגרסה 2.0.0.
+- התוכנה מבוססת על [LiteExplorer](https://github.com/tempous/LiteExplorer) מאת tempous.
+
+### רישיון
+
+[BSD 3-Clause](LICENSE)
+
+</div>
 
 ---
 
-# ZerachExplorer
+## English
 
-ZerachExplorer is a modern and secure file explorer designed for public computer stations.
+A modern, protected file explorer for public computer stations, with the look and behavior of the Windows 11 file explorer.
 
-## Features:
+### Download
 
-* No access to the C drive, hidden folders, or files.  
-* No access to the "Otzar HaHochma" software drives.  
-* Opening and copying files only of approved types.  
-* Approved file extensions: `doc`, `docx`, `xls`, `xlsx`, `pdf`, `txt`, `csv`, `one`, `onetoc2` (Word, Excel, OneNote).  
-* Copy, cut, paste, delete, new folder and rename (without changing the file extension).
-* Windows 11 style interface with tabs, tiles, search, sorting and quick preview.
-* Safe USB eject.
-* Station profiles, permissions, drive blocking, kiosk mode and an audit log.
+- [Installer](https://github.com/abaye123/ZerachExplorer/releases/latest/download/ZerachExplorer_setup.exe) - recommended for public stations, also upgrades earlier versions
+- [Portable file](https://github.com/abaye123/ZerachExplorer/releases/latest/download/ZerachExplorer_portable.exe) - no installation
+- [All releases](https://github.com/abaye123/ZerachExplorer/releases)
 
-## Installation:
+64-bit Windows 10 or later. .NET does not need to be installed.
 
-* `ZerachExplorer_setup_x.y.z.exe` - installer, recommended for public stations. Also upgrades earlier versions.
-* `ZerachExplorer_portable_x.y.z.exe` - a single file that needs no installation.
-* Requires 64-bit Windows 10 or later. .NET does not need to be installed.
+### Features
 
-## Admin Settings & Password:
+**Protection**
 
-* To open the Admin Settings window (kiosk profiles, granular permissions, and allowed extensions): click the Admin Settings button in the toolbar or press `Ctrl+Shift+A`.
-* **Admin password:** there is no default password. It is set on the first visit to the settings and requires Windows administrator approval, as does every later save. `%ProgramData%\ZerachExplorer\config.json` is writable by administrators only.
+- No access to the system drive, hidden files and folders, or "Otzar HaHochma" drives.
+- Only approved file types can be opened and copied.
+- Separate permissions for browsing, opening, copying, pasting, renaming, deleting and creating folders.
+- Drive blocking, approved folders, kiosk mode and password-protected exit.
+- Settings protected by a password and Windows administrator approval, and an audit log.
 
-## Credit:
+**Files**
 
-This software exists thanks to this fantastic project:  
-https://github.com/tempous/LiteExplorer
+- Copy, cut and paste, also with Windows Explorer, with progress, speed, pause and cancel.
+- Conflict handling, recycle bin, new folders and renaming (the extension is kept).
+- Safe USB eject.
 
-Most of version 2.0.0 was developed by [Amlaach](https://github.com/Amlaach).
+**Interface**
 
-## License:
+- Tabs, history, address bar, search, sorting, details and large icons.
+- Rectangle and check box selection, and a preview pane.
+- Import and export of settings for quick setup of many computers.
 
-The source code is available at:  
-https://github.com/abaye123/ZerachExplorer  
-under the BSD 3-Clause License.
+### Guide
 
-## Building:
+[Installation, setup and usage](docs/guide.en.md) | [Security and station hardening](SECURITY.md) | [Changelog](CHANGELOG.md)
 
-`dotnet test LiteExplorer.sln` runs the tests. `scripts/build-release.ps1` builds both packages into `dist` and needs Inno Setup 6. A release is published by changing the version in `Directory.Build.props` on `main`, with notes in `release-notes`.
+### Credits
+
+- [Amlaach](https://github.com/Amlaach) developed most of version 2.0.0.
+- Based on [LiteExplorer](https://github.com/tempous/LiteExplorer) by tempous.
+
+### License
+
+[BSD 3-Clause](LICENSE)
+
+### Building
+
+Requires the .NET 10 SDK, and Inno Setup 6 for the installer.
+
+```
+dotnet test ZerachExplorer.sln
+powershell -File scripts/build-release.ps1
+```
+
+A release is published by changing the version in `Directory.Build.props` on `main`, with notes in `release-notes`.

@@ -16,6 +16,7 @@ namespace ZerachExplorer.Services;
 public static class ProtectedConfigurationStore
 {
     public const string ApplyArgument = "--apply-config";
+    public const string ImportArgument = "--import-settings";
     private const int MaxConfigurationBytes = 1024 * 1024;
 
     private static readonly SecurityIdentifier Administrators = new(WellKnownSidType.BuiltinAdministratorsSid, null);
@@ -26,6 +27,41 @@ public static class ProtectedConfigurationStore
         Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "ZerachExplorer");
 
     public static string FilePath { get; } = Path.Combine(DirectoryPath, "config.json");
+
+    /// <summary>
+    /// Imports settings without any window, for setting up several computers with a script.
+    /// Exit codes: 0 imported, 2 not run as administrator, 3 unreadable or invalid file, 4 saving failed.
+    /// </summary>
+    public static int RunImport(string path)
+    {
+        if (!IsElevated())
+            return 2;
+
+        byte[] content;
+        try
+        {
+            var current = new ConfigurationService();
+            // Damaged settings have no password worth keeping.
+            var imported = SettingsFile.Import(SettingsFile.Read(path), current.CreateEditableCopy());
+            content = ConfigurationService.Serialize(imported);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            CrashLogger.LogException(ex, $"Importing settings from {path}");
+            return 3;
+        }
+
+        try
+        {
+            WriteProtected(content);
+            return 0;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            CrashLogger.LogException(ex, "Saving imported settings");
+            return 4;
+        }
+    }
 
     /// <summary>
     /// A file created by a regular user must not be trusted: anyone could have planted it.

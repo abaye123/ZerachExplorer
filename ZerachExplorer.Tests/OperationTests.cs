@@ -68,21 +68,17 @@ public sealed class OperationTests : IDisposable
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task CancelInTheMiddleOfAFileLeavesNothingBehind(bool move)
+    public void CancelInTheMiddleOfAFileLeavesNothingBehind(bool move)
     {
-        WriteBig("big.bin", 200);
+        WriteBig("big.bin", 20);
         using var progress = new OperationProgress();
-        progress.Pause();
+        progress.FileBytesReported = bytes =>
+        {
+            if (bytes > 0)
+                progress.Cancel();
+        };
 
-        // Paused before the first file, so the cancel surely arrives before the end.
-        var work = Task.Run(() => Run(Service(sameVolume: false), "big.bin", move, progress));
-        await Task.Delay(100);
-        Assert.False(work.IsCompleted);
-        progress.Resume();
-        while (progress.DoneBytes == 0 && !work.IsCompleted)
-            await Task.Yield();
-        progress.Cancel();
-        var result = await work;
+        var result = Run(Service(sameVolume: false), "big.bin", move, progress);
 
         Assert.True(result.Cancelled);
         Assert.True(temp.Exists("big.bin"));
@@ -96,14 +92,20 @@ public sealed class OperationTests : IDisposable
     {
         WriteBig("big.bin", 100);
         using var progress = new OperationProgress();
+        using var paused = new ManualResetEventSlim();
+        progress.FileBytesReported = bytes =>
+        {
+            if (bytes == 0 || paused.IsSet) return;
+            progress.Pause();
+            paused.Set();
+        };
         var work = Task.Run(() => Run(Service(), "big.bin", move: false, progress));
-        while (progress.DoneBytes == 0 && !work.IsCompleted)
-            await Task.Yield();
-        progress.Pause();
-        await Task.Delay(150);
+        await Task.Run(() => paused.Wait());
         long atPause = progress.DoneBytes;
-        await Task.Delay(150);
+        await Task.Delay(200);
         Assert.Equal(atPause, progress.DoneBytes);
+        Assert.False(work.IsCompleted);
+        Assert.True(progress.IsPaused);
 
         progress.Resume();
         await work;

@@ -13,12 +13,14 @@ public partial class AdminSettingsWindow : DialogWindow
 {
     private readonly IConfigurationService configService;
     private readonly IPathPolicy pathPolicy;
-    private readonly AppConfiguration workingConfig;
+    private AppConfiguration workingConfig;
 
     private readonly ObservableCollection<string> extensions = new();
     private readonly ObservableCollection<string> directories = new();
 
     private readonly ObservableCollection<DriveChoice> drives = new();
+
+    private const string SettingsFilter = "הגדרות זרח אקספלורר (*.json)|*.json";
 
     public class DriveChoice
     {
@@ -224,13 +226,14 @@ public partial class AdminSettingsWindow : DialogWindow
         TxtConfirmPassword.Clear();
     }
 
-    private void Save_Click(object sender, RoutedEventArgs e)
+    /// <summary>Takes over what is shown on the screen; false when something is not valid.</summary>
+    private bool ReadForm()
     {
         if (!TryReadNumber(TxtLogDays, AppConfiguration.MaximumLogRetentionDays, out int logDays) ||
             !TryReadNumber(TxtLogSize, AppConfiguration.MaximumLogMaxSizeMegabytes, out int logSize))
         {
             TxtStatusMessage.Text = "ערכי היומן אינם תקינים: 1-365 ימים, 1-500 מגה-בייט.";
-            return;
+            return false;
         }
 
         workingConfig.LogRetentionDays = logDays;
@@ -265,6 +268,61 @@ public partial class AdminSettingsWindow : DialogWindow
         workingConfig.KioskModeEnabled = ChkKioskMode.IsChecked == true;
         workingConfig.PreventAppExit = ChkPreventExit.IsChecked == true;
         workingConfig.BlockedDriveRoots = drives.Where(d => d.IsBlocked).Select(d => d.Root).ToList();
+        return true;
+    }
+
+    private void Export_Click(object sender, RoutedEventArgs e)
+    {
+        TxtStatusMessage.Text = string.Empty;
+        if (!ReadForm()) return;
+
+        var dialog = new Microsoft.Win32.SaveFileDialog
+        {
+            Title = "ייצוא הגדרות",
+            Filter = SettingsFilter,
+            FileName = "ZerachExplorer-settings.json"
+        };
+        if (dialog.ShowDialog(this) != true) return;
+
+        try
+        {
+            File.WriteAllBytes(dialog.FileName, SettingsFile.Export(workingConfig, ChkExportPassword.IsChecked == true));
+            AuditService.Instance.Log(AuditEventType.AdminAccess, "Settings", $"Settings exported to {dialog.FileName}");
+            MessageDialog.Show(this, $"ההגדרות נשמרו בקובץ:\n{dialog.FileName}", "ייצוא הגדרות", MessageKind.Info);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            MessageDialog.Show(this, $"הייצוא נכשל:\n{ex.Message}", "ייצוא הגדרות", MessageKind.Error);
+        }
+    }
+
+    private void Import_Click(object sender, RoutedEventArgs e)
+    {
+        TxtStatusMessage.Text = string.Empty;
+        var dialog = new Microsoft.Win32.OpenFileDialog { Title = "ייבוא הגדרות", Filter = SettingsFilter };
+        if (dialog.ShowDialog(this) != true) return;
+
+        try
+        {
+            var previous = workingConfig;
+            workingConfig = SettingsFile.Import(SettingsFile.Read(dialog.FileName), previous);
+            bool passwordChanged = workingConfig.AdminPasswordHash != previous.AdminPasswordHash;
+            LoadFormValues();
+            AuditService.Instance.Log(AuditEventType.AdminAccess, "Settings", $"Settings loaded from {dialog.FileName}");
+            MessageDialog.Show(this,
+                "ההגדרות נטענו. בדוק אותן ולחץ על שמירה." + (passwordChanged ? "\n\nשים לב: הקובץ כולל סיסמת מנהל, והיא תחליף את הסיסמה הנוכחית." : string.Empty),
+                "ייבוא הגדרות", MessageKind.Info);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            CrashLogger.LogException(ex, $"Importing settings from {dialog.FileName}");
+            MessageDialog.Show(this, "הקובץ אינו קובץ הגדרות תקין של זרח אקספלורר.", "ייבוא הגדרות", MessageKind.Error);
+        }
+    }
+
+    private void Save_Click(object sender, RoutedEventArgs e)
+    {
+        if (!ReadForm()) return;
 
         if (configService.Save(workingConfig, out string? error))
         {

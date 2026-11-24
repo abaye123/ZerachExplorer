@@ -120,6 +120,67 @@ public sealed class AdministrationTests : IDisposable
         Assert.True(controller.PreventAppExit);
     }
 
+    private static AppConfiguration Sample() => new()
+    {
+        Profile = KioskProfile.Controlled,
+        KioskModeEnabled = true,
+        AllowedExtensions = new() { ".pdf" },
+        AllowedExplicitDirectories = new() { @"D:\עבודה" },
+        BlockedDriveRoots = new() { @"E:\" },
+        LogRetentionDays = 7,
+        AdminPasswordHash = "hash",
+        AdminPasswordSalt = "salt"
+    };
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ExportedSettingsImportWithOrWithoutPassword(bool includePassword)
+    {
+        var current = new AppConfiguration { AdminPasswordHash = "mine", AdminPasswordSalt = "my salt" };
+
+        var imported = SettingsFile.Import(SettingsFile.Export(Sample(), includePassword), current);
+
+        Assert.Equal(KioskProfile.Controlled, imported.Profile);
+        Assert.True(imported.KioskModeEnabled);
+        Assert.Equal(new[] { ".pdf" }, imported.AllowedExtensions);
+        Assert.Equal(new[] { @"D:\עבודה" }, imported.AllowedExplicitDirectories);
+        Assert.Equal(new[] { @"E:\" }, imported.BlockedDriveRoots);
+        Assert.Equal(7, imported.LogRetentionDays);
+        Assert.Equal(includePassword ? "hash" : "mine", imported.AdminPasswordHash);
+        Assert.Equal(includePassword ? "salt" : "my salt", imported.AdminPasswordSalt);
+    }
+
+    [Fact]
+    public void ExportWithoutPasswordDoesNotContainIt()
+    {
+        var configuration = Sample();
+
+        string text = System.Text.Encoding.UTF8.GetString(SettingsFile.Export(configuration, includePassword: false));
+
+        Assert.DoesNotContain("\"hash\"", text);
+        Assert.DoesNotContain("\"salt\"", text);
+        Assert.Equal("hash", configuration.AdminPasswordHash);
+    }
+
+    [Theory]
+    [InlineData("{}")]
+    [InlineData("[]")]
+    [InlineData("not json")]
+    [InlineData("{\"name\":\"something else\"}")]
+    [InlineData("{\"Permissions\":null,\"AllowedExtensions\":[]}")]
+    [InlineData("{\"Permissions\":{},\"AllowedExtensions\":[],\"Profile\":\"Unknown\"}")]
+    public void OtherFilesAreNotImported(string content) => Assert.Throws<InvalidDataException>(() =>
+        SettingsFile.Import(System.Text.Encoding.UTF8.GetBytes(content), new AppConfiguration()));
+
+    [Fact]
+    public void HugeFilesAreNotRead()
+    {
+        File.WriteAllBytes(temp.At("big.json"), new byte[SettingsFile.MaxBytes + 1]);
+
+        Assert.Throws<InvalidDataException>(() => SettingsFile.Read(temp.At("big.json")));
+    }
+
     [Theory]
     [InlineData(true)]
     [InlineData(false)]

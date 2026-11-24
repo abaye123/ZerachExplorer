@@ -7,6 +7,7 @@ All notable changes to ZerachExplorer will be documented in this file.
 Versions 1.5.0 to 1.7.0 below were development stages by [Amlaach](https://github.com/Amlaach) and were not released separately. Where they differ from this section, this section describes the released behavior.
 
 ### Changed
+- Projects, folders and namespaces are named ZerachExplorer instead of LiteExplorer.
 - Runs on .NET 10. The executable is `ZerachExplorer.exe`, as in 1.4.0; the installer upgrades 1.4.0 in place.
 - All drives except the system drive and Otzar HaHochma drives are available, and the administrator can block more.
 - There is no default administrator password. It is set on first use; saving settings requires Windows administrator approval. Passwords use 600,000 PBKDF2 iterations and repeated failures cause a delay.
@@ -16,7 +17,15 @@ Versions 1.5.0 to 1.7.0 below were development stages by [Amlaach](https://githu
 - Kiosk mode and the USB dialog are off by default and are controlled in the administration window.
 - Copy and paste use the Windows clipboard, also with Windows Explorer.
 
+### Added
+- Interface rebuilt on the Fluent theme with the layout and behavior of the Windows 11 file explorer, and dialogs in the same style.
+- Background operations with progress, speed, pause and cancel, and a check for free space.
+- Rectangle selection and optional item check boxes.
+- Import and export of settings, and `--import-settings` for setup by script.
+- User guide in Hebrew and English under `docs`.
+
 ### Fixed
+- One drive that is not ready, such as an empty card reader, no longer hides all other drives.
 - Transfers never replace files silently, and an interrupted copy leaves the destination intact.
 - A drive that is in use is not dismounted when ejecting.
 - Typing in the address bar does not change the current folder; refresh keeps the selection and scroll position.

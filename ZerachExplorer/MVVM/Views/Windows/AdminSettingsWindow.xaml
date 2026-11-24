@@ -173,5 +173,24 @@
                     </StackPanel>
                 </Border>
             </TabItem>
+            <TabItem Header="ייבוא וייצוא" Tag="&#xE8AB;">
+                <StackPanel>
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <TextBlock Text="ייצוא הגדרות" FontWeight="SemiBold" />
+                            <TextBlock Style="{StaticResource Caption}" Text="שומר את כל ההגדרות שמוצגות כאן לקובץ, להעברה למחשבים אחרים." Margin="0,2,0,4" />
+                            <CheckBox x:Name="ChkExportPassword" Content="לכלול את סיסמת המנהל (מוצפנת)" Style="{StaticResource ToggleSwitch}" />
+                            <Button Content="ייצוא לקובץ..." Style="{StaticResource DialogButton}" HorizontalAlignment="Left" Margin="0,4,0,0" Click="Export_Click" />
+                        </StackPanel>
+                    </Border>
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <TextBlock Text="ייבוא הגדרות" FontWeight="SemiBold" />
+                            <TextBlock Style="{StaticResource Caption}" Text="טוען הגדרות מקובץ אל המסך הזה. הן נכנסות לתוקף רק אחרי לחיצה על שמירה. אם אין בקובץ סיסמה, הסיסמה הנוכחית נשמרת." Margin="0,2,0,10" />
+                            <Button Content="ייבוא מקובץ..." Style="{StaticResource DialogButton}" HorizontalAlignment="Left" Click="Import_Click" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </TabItem>
     </TabControl>
 </w:DialogWindow>

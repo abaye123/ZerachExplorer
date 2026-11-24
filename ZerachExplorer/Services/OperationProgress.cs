@@ -54,7 +54,14 @@ public sealed class OperationProgress : IDisposable
         Interlocked.Exchange(ref currentFileBytes, 0);
     }
 
-    public void ReportFileBytes(long bytes) => Interlocked.Exchange(ref currentFileBytes, bytes);
+    /// <summary>Lets tests act at an exact point of a copy.</summary>
+    internal Action<long>? FileBytesReported { get; set; }
+
+    public void ReportFileBytes(long bytes)
+    {
+        Interlocked.Exchange(ref currentFileBytes, bytes);
+        FileBytesReported?.Invoke(bytes);
+    }
 
     /// <summary>The item is dealt with, whether it succeeded, failed or was skipped.</summary>
     public void Finish(long bytes)
