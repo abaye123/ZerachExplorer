@@ -1,0 +1,27 @@
+<w:DialogWindow x:Class="ZerachExplorer.MVVM.Views.Windows.MessageDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:w="clr-namespace:ZerachExplorer.MVVM.Views.Windows"
+        Title=""
+        Width="480"
+        Glyph="">
+    <w:DialogWindow.Footer>
+        <StackPanel Orientation="Horizontal">
+            <Button x:Name="BtnAccept" Style="{StaticResource DialogAccentButton}" Click="Accept_Click" />
+            <Button x:Name="BtnCancel" Content="ביטול" Style="{StaticResource DialogButton}" IsCancel="True" Visibility="Collapsed" />
+        </StackPanel>
+    </w:DialogWindow.Footer>
+    <ItemsControl x:Name="Lines">
+        <ItemsControl.ItemTemplate>
+            <DataTemplate>
+                <TextBlock Text="{Binding}"
+                           Margin="0,1"
+                           MinHeight="8"
+                           HorizontalAlignment="Left"
+                           TextWrapping="Wrap"
+                           LineHeight="21"
+                           FlowDirection="{Binding Converter={x:Static w:MessageDialog.LineDirection}}" />
+            </DataTemplate>
+        </ItemsControl.ItemTemplate>
+    </ItemsControl>
+</w:DialogWindow>

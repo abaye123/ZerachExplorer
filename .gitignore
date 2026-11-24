@@ -1,0 +1,7 @@
+# Build results and IDE files
+.vs/
+[Bb]in/
+[Oo]bj/
+*.user
+*.suo
+dist/

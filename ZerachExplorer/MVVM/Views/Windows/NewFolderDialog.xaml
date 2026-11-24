@@ -1,0 +1,23 @@
+<w:DialogWindow x:Class="ZerachExplorer.MVVM.Views.Windows.NewFolderDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:w="clr-namespace:ZerachExplorer.MVVM.Views.Windows"
+        Title="תיקייה חדשה"
+        Width="460"
+        Glyph="&#xE8F4;">
+    <w:DialogWindow.Footer>
+        <StackPanel Orientation="Horizontal">
+            <Button Content="יצירה" Style="{StaticResource DialogAccentButton}" Click="OnConfirmClick" IsDefault="True" />
+            <Button Content="ביטול" Style="{StaticResource DialogButton}" IsCancel="True" />
+        </StackPanel>
+    </w:DialogWindow.Footer>
+    <StackPanel>
+        <TextBlock Text="שם התיקייה" Margin="0,0,0,8" />
+        <TextBox x:Name="TxtFolderName" Text="תיקייה חדשה" />
+        <TextBlock x:Name="TxtError"
+                   Foreground="{StaticResource ErrorBrush}"
+                   Margin="0,8,0,0"
+                   TextWrapping="Wrap"
+                   Visibility="Collapsed" />
+    </StackPanel>
+</w:DialogWindow>

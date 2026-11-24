@@ -1,0 +1,57 @@
+name: Build and Test
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Build, Test & Package
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Build
+        run: dotnet build ZerachExplorer.sln --configuration Release
+
+      - name: Test
+        run: dotnet test ZerachExplorer.sln --configuration Release --no-build
+
+      - name: Install Inno Setup if missing
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup --yes --no-progress }
+
+      - name: Package (unsigned)
+        shell: pwsh
+        run: ./scripts/build-release.ps1
+
+      - name: Verify packages
+        shell: pwsh
+        run: ./scripts/verify-packages.ps1
+
+      - name: Upload unsigned packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: ZerachExplorer-unsigned
+          path: dist/*
+          if-no-files-found: error
