@@ -54,12 +54,14 @@ public class MainWindowTests
 
         var policy = StubPolicy.Create();
         var audit = new RecordingAudit();
+        var operations = new OperationsViewModel(TimeSpan.Zero);
+        var dialogs = new FakeDialogs();
         var services = new ExplorerServices(policy, new FakeDialogs(), new FakeClipboard(), new DirectoryLoader(policy),
-            new FileTransferService(policy, audit), new FileDeletionService(policy, audit), new FileRenameService(policy, audit),
-            new DriveEjectService(policy), audit, new DeviceNotificationService(), new SessionService(audit, () => { }, temp.At("none")));
+            new FileTransferService(policy, audit), new FileDeletionService(policy, audit), new FileRenameService(policy, audit), new FolderCreationService(policy, audit),
+            new DriveEjectService(policy), audit, new DeviceNotificationService(), new SessionService(audit, () => { }, temp.At("none")), operations);
         var configuration = new ConfigurationService(temp.At(@"sub\config.json"));
         var main = new MainWindowViewModel(() => new TabContentViewModel(services));
-        var window = new MainWindow(configuration, policy) { DataContext = main, Left = -5000, ShowInTaskbar = false, ShowActivated = false };
+        var window = new MainWindow(configuration, policy, operations, dialogs) { DataContext = main, Left = -5000, ShowInTaskbar = false, ShowActivated = false };
         window.Show();
 
         var tab = main.CurrentTab!;
@@ -107,6 +109,13 @@ public class MainWindowTests
         tab.ToggleViewModeCmd.Execute(null);
         await Task.Delay(200);
         Save(window, "tiles");
+        var tiles = Find<ListBox>(window).Single(l => l.IsVisible);
+        tiles.ScrollIntoView(tiles.Items[0]);
+        await Task.Delay(150);
+        Save(window, "tilestop");
+        // Every line of a name fits inside its tile.
+        Assert.All(Find<ListBoxItem>(tiles), item => Assert.All(Find<TextBlock>(item), text =>
+            Assert.True(text.TranslatePoint(new Point(0, text.ActualHeight), item).Y <= item.ActualHeight)));
 
         main.OpenInAvailableTab(temp.At("sub"));
         await Ui.Until(() => !main.CurrentTab!.IsLoading);
@@ -134,10 +143,12 @@ public class MainWindowTests
         await ShowAsync(new MessageDialog("אירעה שגיאה", "שגיאה", MessageKind.Error), "error");
         await ShowAsync(new AboutWindow(), "about");
         await ShowAsync(new QuickUsbDialog("הדסה (\u200ED:\u200E)"), "usb");
-        await ShowAsync(new NewFolderDialog(temp.Root, policy), "folder");
+        await ShowAsync(new NewFolderDialog(), "folder");
         await ShowAsync(new AdminPasswordDialog(configuration), "password");
         await ShowAsync(new SetPasswordDialog(configuration), "setpassword");
         await ShowAsync(new ConflictResolutionDialog("setup.exe", temp.At("setup.exe"), temp.At("table.xlsx")), "conflict");
+
+        await ShowProgressAsync(operations, window, temp);
 
         foreach (var button in Find<Button>(window).Where(b => b.ContextMenu != null).Take(2))
         {
@@ -159,7 +170,17 @@ public class MainWindowTests
         Save((FrameworkElement)VisualTreeHelper.GetParent(row.ContextMenu) ?? row.ContextMenu, "menu");
         row.ContextMenu.IsOpen = false;
 
+        // Closing during an operation asks first, then cancels it and closes.
+        var lastOperation = operations.RunAsync("אחרונה", Array.Empty<string>(), true, WorkUntilCancelled);
         window.Close();
+        Assert.True(window.IsVisible);
+        dialogs.ConfirmAnswer = true;
+        bool closed = false;
+        window.Closed += (_, _) => closed = true;
+        window.Close();
+        await Ui.Until(() => closed);
+        Assert.True(lastOperation.IsCompletedSuccessfully);
+
         foreach (var item in main.Tabs)
             item.Dispose();
 
@@ -176,6 +197,58 @@ public class MainWindowTests
             foreach (var nested in Find<T>(child))
                 yield return nested;
         }
+    }
+
+    private static bool WorkUntilCancelled(OperationProgress progress)
+    {
+        while (!progress.IsCancelled)
+            Thread.Sleep(10);
+        return true;
+    }
+
+    private static async Task ShowProgressAsync(OperationsViewModel operations, Window owner, TempFolder temp)
+    {
+        var random = new Random(1);
+        var copy = operations.RunAsync("העתקת 35 פריטים אל \u200EBackup\u200E", new[] { temp.Root }, true, progress =>
+        {
+            progress.AddTotal(35, 3_500_000_000);
+            for (int i = 0; i < 18; i++)
+            {
+                progress.Begin($"SanDisk Software part {i}.pdf");
+                for (int part = 1; part <= 10; part++)
+                {
+                    progress.ReportFileBytes(part * 10_000_000);
+                    Thread.Sleep(random.Next(5, 40));
+                }
+                progress.Finish(100_000_000);
+            }
+            return WorkUntilCancelled(progress);
+        });
+        var folder = operations.RunAsync("יצירת התיקייה חדשה", new[] { temp.Root }, false, _ =>
+        {
+            Thread.Sleep(5500);
+            return true;
+        });
+
+        await Task.Delay(4800);
+        Assert.Equal(2, operations.Visible.Count);
+        Assert.True(operations.IsUsing(Path.GetPathRoot(temp.Root)!));
+        var window = owner.OwnedWindows.OfType<ProgressWindow>().Single();
+        Assert.True(window.IsVisible);
+        Save(window, "progress");
+        Save(owner, "status");
+
+        // Closing it hides it while the work goes on.
+        window.Close();
+        Assert.False(window.IsVisible);
+        operations.ShowCmd.Execute(null);
+        Assert.True(window.IsVisible);
+
+        operations.Visible[0].CancelCmd.Execute(null);
+        await copy;
+        await folder;
+        Assert.False(window.IsVisible);
+        Assert.False(operations.HasActive);
     }
 
     private static async Task ShowAsync(Window dialog, string name, bool keepOpen = false)

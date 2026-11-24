@@ -60,16 +60,14 @@ public sealed class ServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task FolderDescriptionCountsHiddenItems()
+    public void FolderCountIncludesHiddenItems()
     {
         File.SetAttributes(temp.Write(@"d\hidden.txt", "x"), FileAttributes.Hidden);
         temp.Write(@"d\sub\y.txt", "y");
+        using var progress = new OperationProgress();
 
-        string text = await FolderInspector.DescribeContentsAsync(new[] { temp.At("d") });
-
-        Assert.Contains("2 קבצים, 1 תתי-תיקיות", text);
-        Assert.Contains("1 פריטים מוסתרים", text);
-        Assert.Empty(await FolderInspector.DescribeContentsAsync(Array.Empty<string>()));
+        Assert.Equal(new FolderContents(true, 2, 1, 1), FolderInspector.CountContents(new[] { temp.At("d") }, progress));
+        Assert.False(FolderInspector.CountContents(Array.Empty<string>(), progress).HasFolders);
     }
 
     [Theory]

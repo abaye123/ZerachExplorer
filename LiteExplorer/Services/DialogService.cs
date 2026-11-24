@@ -1,3 +1,4 @@
+using LiteExplorer.Infrastructure.Converters;
 using LiteExplorer.MVVM.Models;
 using LiteExplorer.MVVM.Views.Windows;
 using System.Diagnostics.CodeAnalysis;
@@ -15,7 +16,8 @@ public interface IDialogService
     bool Confirm(string message, string title, string acceptText);
 
     string? AskText(string prompt, string title, string initialValue);
-    bool AskNewFolder(string parentDirectory, [NotNullWhen(true)] out string? name);
+    bool AskNewFolder([NotNullWhen(true)] out string? name);
+    bool ConfirmLowSpace(long neededBytes, long freeBytes);
     ConflictResolutionResult AskConflict(string fileName, string existingPath, string incomingPath);
     bool AuthenticateAdmin();
     bool ShowAdminSettings();
@@ -47,8 +49,12 @@ public class DialogService : IDialogService
     public string? AskText(string prompt, string title, string initialValue) =>
         TextInputDialog.Prompt(Owner, prompt, title, initialValue);
 
-    public bool AskNewFolder(string parentDirectory, [NotNullWhen(true)] out string? name) =>
-        NewFolderDialog.Prompt(Owner, parentDirectory, policy, out name);
+    public bool AskNewFolder([NotNullWhen(true)] out string? name) => NewFolderDialog.Prompt(Owner, out name);
+
+    /// <summary>Called from the transfer thread.</summary>
+    public bool ConfirmLowSpace(long neededBytes, long freeBytes) => Application.Current.Dispatcher.Invoke(() => Confirm(
+        $"נראה שאין די מקום ביעד.\nדרוש: \u200E{BytesToNormalSize.FormatBytes(neededBytes)}\u200E, פנוי: \u200E{BytesToNormalSize.FormatBytes(freeBytes)}\u200E.\n\nלהתחיל בכל זאת?",
+        "אין די מקום", "המשך"));
 
     /// <summary>Called from the transfer thread.</summary>
     public ConflictResolutionResult AskConflict(string fileName, string existingPath, string incomingPath) =>

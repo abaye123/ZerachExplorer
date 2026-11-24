@@ -293,7 +293,6 @@
             <Setter.Value>
                 <ControlTemplate TargetType="ListBoxItem">
                     <Border x:Name="Root"
-                            Margin="{TemplateBinding Margin}"
                             Padding="{TemplateBinding Padding}"
                             Background="Transparent"
                             BorderBrush="Transparent"
@@ -568,6 +567,7 @@
                                 <ContentPresenter Grid.Row="1" Margin="24,14,24,22" />
 
                                 <Border Grid.Row="2"
+                                        x:Name="FooterBar"
                                         Padding="24,16"
                                         Background="{StaticResource FooterBrush}"
                                         BorderBrush="{StaticResource LineBrush}"
@@ -577,6 +577,11 @@
                             </Grid>
                         </Border>
                     </AdornerDecorator>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="Footer" Value="{x:Null}">
+                            <Setter TargetName="FooterBar" Property="Visibility" Value="Collapsed" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
                 </ControlTemplate>
             </Setter.Value>
         </Setter>

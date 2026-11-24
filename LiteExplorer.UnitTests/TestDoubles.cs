@@ -80,7 +80,9 @@ public class FakeDialogs : IDialogService
 
     public string? AskText(string prompt, string title, string initialValue) => TextAnswer;
 
-    public bool AskNewFolder(string parentDirectory, [NotNullWhen(true)] out string? name) => (name = FolderAnswer) != null;
+    public bool AskNewFolder([NotNullWhen(true)] out string? name) => (name = FolderAnswer) != null;
+
+    public bool ConfirmLowSpace(long neededBytes, long freeBytes) => ConfirmAnswer;
 
     public ConflictResolutionResult AskConflict(string fileName, string existingPath, string incomingPath) => new();
     public bool AuthenticateAdmin() => false;

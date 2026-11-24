@@ -11,7 +11,9 @@ internal sealed record ExplorerServices(
     IFileTransferService Transfer,
     IFileDeletionService Deletion,
     IFileRenameService Rename,
+    IFolderCreationService Folders,
     IDriveEjectService Eject,
     IAuditService Audit,
     IDeviceNotificationService Devices,
-    ISessionService Session);
+    ISessionService Session,
+    OperationsViewModel Operations);

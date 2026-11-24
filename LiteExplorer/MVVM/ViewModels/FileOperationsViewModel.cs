@@ -10,7 +10,6 @@ namespace LiteExplorer.MVVM.ViewModels;
 internal interface IExplorerTab
 {
     string? TabPath { get; }
-    bool IsLoading { set; }
     FileSystemObject? CurrentFileSystemObject { get; }
     IReadOnlyList<FileSystemObject> SelectedFileSystemObjects { get; }
     void Reload();
@@ -37,8 +36,8 @@ internal sealed class FileOperationsViewModel
         PasteCmd = new ActionCommand(async _ => await PasteAsync(),
             _ => policy.Permissions.CanCopyTo && IsInFolder && services.Clipboard.HasFiles());
         DeleteCmd = new ActionCommand(async p => await DeleteAsync(p), p => policy.Permissions.CanDelete && HasTarget(p));
-        RenameCmd = new ActionCommand(Rename, p => policy.Permissions.CanRename && GetTargets(p).Count == 1);
-        CreateDirectoryCmd = new ActionCommand(_ => CreateDirectory(), _ => policy.Permissions.CanCreateDirectory && IsInFolder);
+        RenameCmd = new ActionCommand(async p => await RenameAsync(p), p => policy.Permissions.CanRename && GetTargets(p).Count == 1);
+        CreateDirectoryCmd = new ActionCommand(async _ => await CreateDirectoryAsync(), _ => policy.Permissions.CanCreateDirectory && IsInFolder);
         EjectDriveCmd = new ActionCommand(async p => await EjectAsync(p), p => FindRemovableDrive(p) != null);
         CalculateFolderSizeCmd = new ActionCommand(async p => await CalculateFolderSizeAsync(p));
     }
@@ -91,17 +90,29 @@ internal sealed class FileOperationsViewModel
 
     private async Task PasteAsync()
     {
-        if (!TryGetTargetFolder("הדבקה", "לא ניתן להדביק פריטים במסך הראשי. אנא בחר כונן או תיקייה תחילה.", out var target))
+        if (tab.TabPath is not { } target)
             return;
 
         var sources = services.Clipboard.Read(out bool isCut);
         if (sources.Count == 0)
             return;
 
-        tab.IsLoading = true;
+        string count = sources.Count == 1 ? "פריט אחד" : $"{sources.Count} פריטים";
+        string title = $"{(isCut ? "העברת" : "העתקת")} {count} אל {NameOf(target)}";
         try
         {
-            var result = await Task.Run(() => services.Transfer.Transfer(sources, target, isCut, dialogs.AskConflict));
+            string? denied = null;
+            var result = await services.Operations.RunAsync(title, sources.Append(target).ToList(), canStop: true, progress =>
+                policy.CanNavigate(target, out denied)
+                    ? services.Transfer.Transfer(sources, target, isCut, dialogs.AskConflict, progress, dialogs.ConfirmLowSpace)
+                    : null);
+
+            if (result == null)
+            {
+                services.Audit.Log(AuditEventType.SecurityBlocked, target, denied, false);
+                dialogs.Warn(denied!, "גישה נדחתה");
+                return;
+            }
 
             if (isCut && !result.Cancelled)
                 services.Clipboard.Clear();
@@ -109,7 +120,7 @@ internal sealed class FileOperationsViewModel
             tab.Reload();
 
             if (result.Errors.Count > 0)
-                dialogs.Warn($"חלק מהקבצים לא הועברו:\n\n{Summarize(result.Errors)}", "הודעת העברה");
+                dialogs.Warn($"חלק מהקבצים לא הועברו:\n\n{Summarize(result.Errors)}", "העברת קבצים");
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -118,17 +129,42 @@ internal sealed class FileOperationsViewModel
         }
         finally
         {
-            tab.IsLoading = false;
             CommandManager.InvalidateRequerySuggested();
         }
     }
 
     private async Task DeleteAsync(object? parameter)
     {
+        var targets = GetTargets(parameter);
+        var check = await services.Operations.RunAsync("בדיקת הפריטים למחיקה", targets, canStop: true, progress => CheckDeletion(targets, progress));
+        if (check == null)
+            return;
+
+        var errors = check.Errors;
+        if (check.Allowed.Count > 0)
+        {
+            if (!ConfirmDeletion(check))
+                return;
+
+            string title = check.Allowed.Count == 1 ? $"מחיקת {NameOf(check.Allowed[0])}" : $"מחיקת {check.Allowed.Count} פריטים";
+            errors.AddRange(await services.Operations.RunAsync(title, check.Allowed, canStop: true, progress => DeleteAll(check, progress)));
+
+            tab.Reload();
+            CommandManager.InvalidateRequerySuggested();
+        }
+
+        if (errors.Count > 0)
+            dialogs.Warn($"חלק מהפריטים לא נמחקו:\n\n{Summarize(errors)}", "מחיקה");
+    }
+
+    private sealed record DeletionCheck(List<string> Allowed, List<string> Errors, bool Recyclable, FolderContents Contents);
+
+    private DeletionCheck? CheckDeletion(List<string> targets, OperationProgress progress)
+    {
         var allowed = new List<string>();
         var errors = new List<string>();
 
-        foreach (var target in GetTargets(parameter))
+        foreach (var target in targets)
         {
             if (!policy.CanDelete(target, out var reason))
             {
@@ -145,58 +181,88 @@ internal sealed class FileOperationsViewModel
             }
         }
 
-        if (allowed.Count > 0)
+        try
         {
-            bool recyclable = allowed.All(services.Deletion.SupportsRecycleBin);
-            if (!await ConfirmDeletionAsync(allowed, recyclable))
-                return;
-
-            foreach (var target in allowed)
-            {
-                string? error = null;
-                // The shell shows its own windows, so recycling stays on the UI thread.
-                bool deleted = recyclable
-                    ? services.Deletion.MoveToRecycleBin(target, out error)
-                    : await Task.Run(() => services.Deletion.DeletePermanently(target, out error));
-                if (!deleted)
-                    errors.Add($"{Path.GetFileName(target)}: {error}");
-            }
-
-            tab.Reload();
-            CommandManager.InvalidateRequerySuggested();
+            var contents = FolderInspector.CountContents(allowed.Where(Directory.Exists), progress);
+            return new DeletionCheck(allowed, errors, allowed.All(services.Deletion.SupportsRecycleBin), contents);
         }
-
-        if (errors.Count > 0)
-            dialogs.Warn($"שגיאה במחיקת חלק מהפריטים:\n{Summarize(errors)}", "שגיאה במחיקה");
+        catch (OperationCanceledException)
+        {
+            return null;
+        }
     }
 
-    private async Task<bool> ConfirmDeletionAsync(List<string> targets, bool recyclable)
+    private List<string> DeleteAll(DeletionCheck check, OperationProgress progress)
     {
-        string subject = targets.Count == 1 ? $"למחוק את הפריט?\n{targets[0]}" : $"למחוק {targets.Count} פריטים?";
-        string details = await FolderInspector.DescribeContentsAsync(targets.Where(Directory.Exists).ToList());
-        string consequence = recyclable
+        var errors = new List<string>();
+        // Windows reports no progress for the recycle bin, so there only whole items are counted.
+        progress.AddTotal(check.Recyclable ? check.Allowed.Count : check.Allowed.Count + check.Contents.Files + check.Contents.Folders, 0);
+
+        foreach (var target in check.Allowed)
+        {
+            if (progress.IsCancelled)
+                break;
+
+            string? error;
+            bool deleted;
+            if (check.Recyclable)
+            {
+                progress.Begin(Path.GetFileName(target));
+                deleted = services.Deletion.MoveToRecycleBin(target, out error);
+                progress.Finish(0);
+            }
+            else
+            {
+                deleted = services.Deletion.DeletePermanently(target, out error, progress);
+            }
+
+            if (!deleted)
+                errors.Add($"{Path.GetFileName(target)}: {error}");
+        }
+
+        return errors;
+    }
+
+    private bool ConfirmDeletion(DeletionCheck check)
+    {
+        string subject = check.Allowed.Count == 1 ? $"למחוק את הפריט?\n{check.Allowed[0]}" : $"למחוק {check.Allowed.Count} פריטים?";
+        string details = string.Empty;
+        if (check.Contents.HasFolders)
+        {
+            details = $"תוכן התיקיות: {check.Contents.Files} קבצים, {check.Contents.Folders} תתי-תיקיות.\n";
+            if (check.Contents.Hidden > 0)
+                details += $"שים לב: כולל {check.Contents.Hidden} פריטים מוסתרים או פריטי מערכת.\n";
+            details += "\n";
+        }
+
+        string consequence = check.Recyclable
             ? "הפריטים יועברו לסל המיחזור."
             : "שים לב: אין בכונן זה סל מיחזור. המחיקה סופית ולא ניתן יהיה לשחזר!";
 
-        return dialogs.Confirm(
-            $"{subject}\n\n{details}{consequence}",
-            recyclable ? "מחיקת פריטים" : "מחיקה לצמיתות", "מחיקה");
+        return dialogs.Confirm($"{subject}\n\n{details}{consequence}", check.Recyclable ? "מחיקת פריטים" : "מחיקה לצמיתות", "מחיקה");
     }
 
-    private void Rename(object? parameter)
+    private async Task RenameAsync(object? parameter)
     {
         var targets = GetTargets(parameter);
-        if (targets.Count != 1 || !File.Exists(targets[0]))
+        if (targets.Count != 1)
+            return;
+
+        string path = targets[0];
+        string? denied = null;
+        var kind = await services.Operations.RunAsync("בדיקת הקובץ", targets, canStop: false, _ =>
+            !File.Exists(path) ? (bool?)null : policy.CanOpenFile(path, out denied));
+
+        if (kind == null)
         {
-            dialogs.Error("ניתן לשנות שם לקבצים בלבד.", "שגיאה");
+            dialogs.Error("ניתן לשנות שם לקבצים בלבד.", "שינוי שם");
             return;
         }
 
-        string path = targets[0];
-        if (!policy.CanOpenFile(path, out var reason))
+        if (kind == false)
         {
-            services.Audit.Log(AuditEventType.FileRenamed, path, reason, false);
-            dialogs.Warn($"לא ניתן לשנות שם לקובץ זה:\n{reason}", "גישה נדחתה");
+            services.Audit.Log(AuditEventType.FileRenamed, path, denied, false);
+            dialogs.Warn($"לא ניתן לשנות שם לקובץ זה:\n{denied}", "גישה נדחתה");
             return;
         }
 
@@ -205,31 +271,27 @@ internal sealed class FileOperationsViewModel
         if (newName == null || string.Equals(newName, currentName, StringComparison.OrdinalIgnoreCase))
             return;
 
-        if (services.Rename.Rename(path, newName, out var error))
+        string? error = await services.Operations.RunAsync($"שינוי שם של {NameOf(path)}", targets, canStop: false, _ =>
+            services.Rename.Rename(path, newName, out var message) ? null : message);
+
+        if (error == null)
             tab.Reload();
         else
-            dialogs.Error($"שינוי השם נכשל: {error}", "שגיאה");
+            dialogs.Error($"שינוי השם נכשל:\n{error}", "שינוי שם");
     }
 
-    private void CreateDirectory()
+    private async Task CreateDirectoryAsync()
     {
-        if (!TryGetTargetFolder("יצירת תיקייה", "לא ניתן ליצור תיקייה במסך הראשי. אנא בחר כונן או תיקייה תחילה.", out var parent) ||
-            !dialogs.AskNewFolder(parent, out var name))
+        if (tab.TabPath is not { } parent || !dialogs.AskNewFolder(out var name))
             return;
 
-        string path = Path.Combine(parent, name);
-        try
-        {
-            Directory.CreateDirectory(path);
-            services.Audit.Log(AuditEventType.DirectoryCreated, path, "Created directory");
+        string? error = await services.Operations.RunAsync($"יצירת התיקייה {name}", new[] { parent }, canStop: false, _ =>
+            services.Folders.Create(parent, name, out var message) ? null : message);
+
+        if (error == null)
             tab.Reload();
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            CrashLogger.LogException(ex, $"Failed to create folder {path}");
-            services.Audit.Log(AuditEventType.DirectoryCreated, path, ex.Message, false);
-            dialogs.Error($"יצירת התיקייה נכשלה: {ex.Message}", "שגיאה");
-        }
+        else
+            dialogs.Error($"יצירת התיקייה נכשלה:\n{error}", "תיקייה חדשה");
     }
 
     private async Task EjectAsync(object? parameter)
@@ -241,13 +303,19 @@ internal sealed class FileOperationsViewModel
             return;
         }
 
+        if (services.Operations.IsUsing(drive))
+        {
+            dialogs.Warn("מתבצעת כרגע פעולת קבצים בכונן זה. המתן לסיומה או בטל אותה.", "הוצאת התקן USB");
+            return;
+        }
+
         // Folder watchers in every open tab hold the volume open and would fail the lock.
         services.Devices.NotifyDriveReleasing(drive);
         bool success;
         string message = string.Empty;
         try
         {
-            success = await Task.Run(() => services.Eject.EjectDrive(drive, out message));
+            success = await services.Operations.RunAsync($"הוצאת הכונן {NameOf(drive)}", Array.Empty<string>(), canStop: false, _ => services.Eject.EjectDrive(drive, out message));
         }
         finally
         {
@@ -299,21 +367,11 @@ internal sealed class FileOperationsViewModel
         }
     }
 
-    private bool TryGetTargetFolder(string title, string homeMessage, out string folder)
+    // The marks keep a Latin name intact inside a Hebrew title.
+    private static string NameOf(string path)
     {
-        folder = tab.TabPath ?? string.Empty;
-        if (!Directory.Exists(folder))
-        {
-            dialogs.Info(homeMessage, title);
-            return false;
-        }
-
-        if (policy.CanNavigate(folder, out var reason))
-            return true;
-
-        services.Audit.Log(AuditEventType.SecurityBlocked, folder, reason, false);
-        dialogs.Warn(reason, "גישה נדחתה");
-        return false;
+        string name = Path.GetFileName(Path.TrimEndingDirectorySeparator(path));
+        return $"\u200E{(name.Length == 0 ? path.TrimEnd('\\') : name)}\u200E";
     }
 
     private static string Summarize(List<string> errors)

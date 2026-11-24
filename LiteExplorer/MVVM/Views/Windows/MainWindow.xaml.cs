@@ -15,15 +15,26 @@ public partial class MainWindow
     private readonly IConfigurationService configuration;
     private readonly IPathPolicy policy;
 
-    public MainWindow(IConfigurationService configuration, IPathPolicy policy)
+    private readonly OperationsViewModel operations;
+    private readonly IDialogService dialogs;
+    private ProgressWindow? progressWindow;
+
+    internal MainWindow(IConfigurationService configuration, IPathPolicy policy, OperationsViewModel operations, IDialogService dialogs)
     {
+        this.operations = operations;
+        this.dialogs = dialogs;
         this.configuration = configuration;
         this.policy = policy;
         InitializeComponent();
         Loaded += (_, _) => KioskController.Instance.ApplyKioskWindowSettings(this);
         Closing += OnWindowClosing;
         PreviewKeyDown += OnPreviewKeyDown;
+        // An owned window needs its owner to exist first.
+        SourceInitialized += (_, _) => progressWindow = new ProgressWindow(operations) { Owner = this };
     }
+
+    /// <summary>The application is really closing, so nothing may hold it back.</summary>
+    internal bool IsClosingNow { get; private set; }
 
     private MainWindowViewModel ViewModel => (MainWindowViewModel)DataContext;
 
@@ -56,8 +67,32 @@ public partial class MainWindow
         e.Handled = true;
     }
 
-    private void OnWindowClosing(object? sender, CancelEventArgs e) =>
+    private async void OnWindowClosing(object? sender, CancelEventArgs e)
+    {
+        if (IsClosingNow) return;
+
+        if (operations.HasActive && !dialogs.Confirm("פעולות בקבצים עדיין מתבצעות.\nלבטל אותן ולצאת?", "יציאה", "ביטול הפעולות ויציאה"))
+        {
+            e.Cancel = true;
+            return;
+        }
+
         KioskController.Instance.HandleWindowClosing(this, e, () => AdminPasswordDialog.Prompt(configuration, this));
+        if (e.Cancel) return;
+
+        if (!operations.HasActive)
+        {
+            IsClosingNow = true;
+            return;
+        }
+
+        // Partial files are cleaned up before leaving.
+        e.Cancel = true;
+        IsEnabled = false;
+        await operations.CancelAllAsync();
+        IsClosingNow = true;
+        Close();
+    }
 
     protected override void OnSourceInitialized(EventArgs e)
     {

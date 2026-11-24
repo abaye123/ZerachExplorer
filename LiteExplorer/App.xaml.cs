@@ -78,6 +78,8 @@ public partial class App
         services.AddSingleton<IFileTransferService, FileTransferService>();
         services.AddSingleton<IFileDeletionService, FileDeletionService>();
         services.AddSingleton<IFileRenameService, FileRenameService>();
+        services.AddSingleton<IFolderCreationService, FolderCreationService>();
+        services.AddSingleton<OperationsViewModel>();
         services.AddSingleton<IDriveEjectService, DriveEjectService>();
         services.AddSingleton<IClipboardService, ClipboardService>();
         services.AddSingleton<IDialogService, DialogService>();
@@ -87,7 +89,8 @@ public partial class App
         services.AddTransient<TabContentViewModel>();
         services.AddSingleton<MainWindowViewModel>(provider => new(provider.GetRequiredService<TabContentViewModel>));
         services.AddSingleton<MainWindow>(provider =>
-            new(provider.GetRequiredService<IConfigurationService>(), provider.GetRequiredService<IPathPolicy>())
+            new(provider.GetRequiredService<IConfigurationService>(), provider.GetRequiredService<IPathPolicy>(),
+                provider.GetRequiredService<OperationsViewModel>(), provider.GetRequiredService<IDialogService>())
             {
                 DataContext = provider.GetRequiredService<MainWindowViewModel>()
             });

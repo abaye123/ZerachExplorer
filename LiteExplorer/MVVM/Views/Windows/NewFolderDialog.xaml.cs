@@ -1,24 +1,15 @@
-using LiteExplorer.Services;
-using System;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Windows;
 
 namespace LiteExplorer.MVVM.Views.Windows;
 
+/// <summary>Asks for a name. Whether the folder may be created is checked in the background, as it can be slow.</summary>
 public partial class NewFolderDialog : DialogWindow
 {
-    private readonly string parentDirectory;
-    private readonly IPathPolicy pathPolicy;
-
-    public string FolderName { get; private set; } = string.Empty;
-
-    public NewFolderDialog(string parentDirectory, IPathPolicy pathPolicy)
+    public NewFolderDialog()
     {
         InitializeComponent();
-        this.parentDirectory = parentDirectory;
-        this.pathPolicy = pathPolicy ?? new PathPolicy();
-
         Loaded += (_, _) =>
         {
             TxtFolderName.Focus();
@@ -26,54 +17,28 @@ public partial class NewFolderDialog : DialogWindow
         };
     }
 
+    private string FolderName => TxtFolderName.Text.Trim();
+
+    public static bool Prompt(Window? owner, [NotNullWhen(true)] out string? name)
+    {
+        var dialog = new NewFolderDialog { Owner = owner };
+        name = dialog.ShowDialog() == true ? dialog.FolderName : null;
+        return name != null;
+    }
+
     private void OnConfirmClick(object sender, RoutedEventArgs e)
     {
-        string? name = TxtFolderName.Text?.Trim();
+        string? error = FolderName.Length == 0 ? "נא להזין שם תיקייה."
+            : FolderName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || FolderName.Contains("..") ? "שם התיקייה מכיל תווים שאינם חוקיים."
+            : null;
 
-        if (string.IsNullOrWhiteSpace(name))
+        if (error == null)
         {
-            ShowError("נא להזין שם תיקייה.");
+            DialogResult = true;
             return;
         }
 
-        if (!pathPolicy.CanCreateDirectory(parentDirectory, name, out string? reason))
-        {
-            ShowError(reason ?? "יצירת התיקייה אינה מורשית בנתיב זה.");
-            return;
-        }
-
-        string fullPath = Path.Combine(parentDirectory, name);
-        if (Directory.Exists(fullPath))
-        {
-            ShowError("תיקייה בשם זה כבר קיימת בנתיב היעד.");
-            return;
-        }
-
-        FolderName = name;
-        DialogResult = true;
-    }
-
-    private void ShowError(string message)
-    {
-        TxtError.Text = message;
+        TxtError.Text = error;
         TxtError.Visibility = Visibility.Visible;
-    }
-
-    public static bool Prompt(Window? owner, string parentDirectory, IPathPolicy pathPolicy, [NotNullWhen(true)] out string? createdFolderName)
-    {
-        createdFolderName = null;
-        var dlg = new NewFolderDialog(parentDirectory, pathPolicy);
-        if (owner != null)
-        {
-            dlg.Owner = owner;
-        }
-
-        if (dlg.ShowDialog() == true)
-        {
-            createdFolderName = dlg.FolderName;
-            return true;
-        }
-
-        return false;
     }
 }

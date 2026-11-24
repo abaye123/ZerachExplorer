@@ -14,7 +14,7 @@ public interface IFileDeletionService
 
     bool MoveToRecycleBin(string path, out string? error);
 
-    bool DeletePermanently(string path, out string? error);
+    bool DeletePermanently(string path, out string? error, OperationProgress? progress = null);
 }
 
 public class FileDeletionService : IFileDeletionService
@@ -52,21 +52,77 @@ public class FileDeletionService : IFileDeletionService
 
         return Delete(path, "Recycled", out error, fullPath =>
         {
-            int code = Interop.SendToRecycleBin(fullPath, out bool aborted);
+            var (code, aborted) = RecycleOnShellThread(fullPath);
             if (aborted)
                 return "המחיקה בוטלה.";
             return code == 0 ? null : $"שגיאת מערכת 0x{code:X}";
         });
     }
 
-    public bool DeletePermanently(string path, out string? error) => Delete(path, "Deleted permanently", out error, fullPath =>
+    public bool DeletePermanently(string path, out string? error, OperationProgress? progress = null) =>
+        Delete(path, "Deleted permanently", out error, fullPath =>
+        {
+            var failures = new List<string>();
+            try
+            {
+                DeleteTree(fullPath, progress, failures);
+            }
+            catch (OperationCanceledException)
+            {
+                return "המחיקה בוטלה. חלק מהפריטים כבר נמחקו.";
+            }
+
+            return failures.Count switch
+            {
+                0 => null,
+                1 => failures[0],
+                _ => $"{failures[0]} (ועוד {failures.Count - 1} פריטים)"
+            };
+        });
+
+    private static void DeleteTree(string path, OperationProgress? progress, List<string> failures)
     {
-        if (Directory.Exists(fullPath))
-            Directory.Delete(fullPath, recursive: true);
-        else
-            File.Delete(fullPath);
-        return null;
-    });
+        progress?.Checkpoint();
+        progress?.Begin(Path.GetFileName(path));
+        try
+        {
+            var attributes = File.GetAttributes(path);
+            bool isDirectory = (attributes & FileAttributes.Directory) != 0;
+            bool isLink = (attributes & FileAttributes.ReparsePoint) != 0;
+
+            // A link is removed itself; what it points to is not touched.
+            if (isDirectory && !isLink)
+            {
+                foreach (var child in Directory.GetFileSystemEntries(path))
+                    DeleteTree(child, progress, failures);
+            }
+
+            if ((attributes & FileAttributes.ReadOnly) != 0)
+                File.SetAttributes(path, attributes & ~FileAttributes.ReadOnly);
+
+            if (isDirectory)
+                Directory.Delete(path, recursive: false);
+            else
+                File.Delete(path);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            failures.Add($"{Path.GetFileName(path)}: {ex.Message}");
+        }
+        progress?.Finish(0);
+    }
+
+    /// <summary>The shell needs a single-threaded apartment, and must not block the window.</summary>
+    private static (int Code, bool Aborted) RecycleOnShellThread(string path)
+    {
+        int code = 0;
+        bool aborted = false;
+        var thread = new Thread(() => code = Interop.SendToRecycleBin(path, out aborted));
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        thread.Join();
+        return (code, aborted);
+    }
 
     private bool Delete(string path, string details, out string? error, Func<string, string?> action)
     {

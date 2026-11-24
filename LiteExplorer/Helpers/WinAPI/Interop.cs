@@ -213,6 +213,7 @@ public static class Interop
     }
 
     private const uint FO_DELETE = 3;
+    private const ushort FOF_SILENT = 0x0004;
     private const ushort FOF_NOCONFIRMATION = 0x0010;
     private const ushort FOF_ALLOWUNDO = 0x0040;
     private const ushort FOF_WANTNUKEWARNING = 0x4000;
@@ -244,7 +245,7 @@ public static class Interop
         {
             Function = FO_DELETE,
             From = path + "\0\0",
-            Flags = FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_WANTNUKEWARNING
+            Flags = FOF_SILENT | FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_WANTNUKEWARNING
         };
 
         int result = SHFileOperation(ref operation);

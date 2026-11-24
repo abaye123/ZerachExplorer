@@ -23,9 +23,9 @@ public sealed class TabTests : IDisposable
     private TabContentViewModel Create()
     {
         return new TabContentViewModel(new ExplorerServices(policy, dialogs, clipboard, new DirectoryLoader(policy),
-            new FileTransferService(policy, audit), new FileDeletionService(policy, audit), new FileRenameService(policy, audit),
+            new FileTransferService(policy, audit), new FileDeletionService(policy, audit), new FileRenameService(policy, audit), new FolderCreationService(policy, audit),
             new DriveEjectService(policy), audit, new DeviceNotificationService(),
-            new SessionService(audit, () => { }, temp.At("none"))));
+            new SessionService(audit, () => { }, temp.At("none")), new OperationsViewModel()));
     }
 
     private async Task<TabContentViewModel> OpenRoot()
@@ -127,8 +127,8 @@ public sealed class TabTests : IDisposable
     public void RemovedFolderReturnsHome() => Ui.Run(async () =>
     {
         temp.Write(@"d\x.txt", "x");
-        using var tab = new TabContentViewModel(new ExplorerServices(policy, dialogs, clipboard, new FailingLoader(), null!, null!, null!, null!,
-            audit, new DeviceNotificationService(), new SessionService(audit, () => { }, temp.At("none"))));
+        using var tab = new TabContentViewModel(new ExplorerServices(policy, dialogs, clipboard, new FailingLoader(), null!, null!, null!, null!, null!,
+            audit, new DeviceNotificationService(), new SessionService(audit, () => { }, temp.At("none")), new OperationsViewModel()));
 
         tab.Open(temp.At("d"));
         await Ui.Until(() => dialogs.Messages.Count > 0);

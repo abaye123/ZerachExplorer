@@ -77,7 +77,7 @@ internal sealed class DirectoryLoader : IDirectoryLoader
             .Select(d => (Func<FileSystemObject>)(() => CreateDirectory(d)))
             .ToList();
         sources.AddRange(directory.EnumerateFiles()
-            .Where(f => policy.CanListFile(f.FullName, out _))
+            .Where(f => !FileTransferService.IsTemporaryName(f.Name) && policy.CanListFile(f.FullName, out _))
             .Select(f => (Func<FileSystemObject>)(() => CreateFile(f))));
         return sources;
     }

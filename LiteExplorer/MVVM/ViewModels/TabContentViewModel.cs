@@ -125,6 +125,7 @@ internal sealed class TabContentViewModel : ViewModel, IExplorerTab, IDisposable
     public ObservableCollection<FileSystemObject> SidebarQuickAccess => sidebar.QuickAccess;
     public ObservableCollection<FileSystemObject> SidebarDrives => sidebar.Drives;
     public FilePreviewInfo PreviewInfo => preview.Info;
+    public OperationsViewModel Operations => services.Operations;
     public IReadOnlyList<FileSystemObject> SelectedFileSystemObjects => selectedItems;
 
     /// <summary>Raised to open a folder in another tab, without leaving this one.</summary>
@@ -387,13 +388,6 @@ internal sealed class TabContentViewModel : ViewModel, IExplorerTab, IDisposable
         scan = new CancellationTokenSource();
         var token = scan.Token;
 
-        if (TabPath != null && !policy.CanNavigate(TabPath, out var reason))
-        {
-            string denied = TabPath;
-            TabPath = null;
-            Deny(denied, reason);
-        }
-
         string? path = TabPath;
         bool isRefresh = hasLoaded && string.Equals(path, loadedPath, StringComparison.OrdinalIgnoreCase);
 
@@ -412,6 +406,15 @@ internal sealed class TabContentViewModel : ViewModel, IExplorerTab, IDisposable
         string? failure = null;
         try
         {
+            string? denied = null;
+            if (path != null && !await Task.Run(() => policy.CanNavigate(path, out denied), token))
+            {
+                token.ThrowIfCancellationRequested();
+                GoHome();
+                Deny(path, denied!);
+                return;
+            }
+
             await LoadAsync(path, isRefresh, token);
             loadedPath = path;
             hasLoaded = true;
