@@ -141,6 +141,9 @@ public class ConfigurationService : IConfigurationService
         policy.BlockedVolumeLabels.Clear();
         foreach (var l in config.BlockedVolumeLabels) policy.BlockedVolumeLabels.Add(l);
 
+        policy.BlockedDriveRoots.Clear();
+        foreach (var root in config.BlockedDriveRoots) policy.BlockedDriveRoots.Add(root);
+
         policy.BlockedVolumeSerialNumbers.Clear();
         foreach (var s in config.BlockedVolumeSerialNumbers) policy.BlockedVolumeSerialNumbers.Add(s);
 

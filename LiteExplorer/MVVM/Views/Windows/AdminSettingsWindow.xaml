@@ -199,6 +199,29 @@
                 </Grid>
             </TabItem>
 
+            <!-- Blocked Drives Tab -->
+            <TabItem Header="כוננים">
+                <Grid Margin="0,10,0,0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <TextBlock Text="סמן כוננים לחסימה. כונן המערכת וכונני אוצר החוכמה חסומים תמיד."
+                               Margin="0,0,0,10"
+                               FontSize="12"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                    <ListBox x:Name="LstDrives"
+                             Grid.Row="1"
+                             BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <CheckBox Content="{Binding Label}" IsChecked="{Binding IsBlocked, Mode=TwoWay}" />
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Grid>
+            </TabItem>
+
             <!-- Password Tab -->
             <TabItem Header="סיסמת מנהל">
                 <StackPanel Margin="0,12,0,0" MaxWidth="400" HorizontalAlignment="Right">

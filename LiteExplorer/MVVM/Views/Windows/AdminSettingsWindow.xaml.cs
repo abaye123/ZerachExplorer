@@ -18,6 +18,15 @@ public partial class AdminSettingsWindow : Window
     private readonly ObservableCollection<string> extensions = new();
     private readonly ObservableCollection<string> directories = new();
 
+    private readonly ObservableCollection<DriveChoice> drives = new();
+
+    public class DriveChoice
+    {
+        public string Root { get; init; } = string.Empty;
+        public string Label { get; init; } = string.Empty;
+        public bool IsBlocked { get; set; }
+    }
+
     public AdminSettingsWindow(IConfigurationService configService, IPathPolicy pathPolicy)
     {
         this.configService = configService;
@@ -28,6 +37,7 @@ public partial class AdminSettingsWindow : Window
 
         LstExtensions.ItemsSource = extensions;
         LstDirectories.ItemsSource = directories;
+        LstDrives.ItemsSource = drives;
 
         LoadFormValues();
     }
@@ -64,6 +74,34 @@ public partial class AdminSettingsWindow : Window
 
         directories.Clear();
         foreach (var dir in workingConfig.AllowedExplicitDirectories) directories.Add(dir);
+
+        drives.Clear();
+        var connected = DriveInfo.GetDrives().ToDictionary(d => d.Name, StringComparer.OrdinalIgnoreCase);
+        // Keep blocked drives listed even while they are disconnected.
+        foreach (var root in connected.Keys.Union(workingConfig.BlockedDriveRoots, StringComparer.OrdinalIgnoreCase).OrderBy(r => r))
+        {
+            if (string.Equals(root, PathPolicy.SystemDriveRoot, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            drives.Add(new DriveChoice
+            {
+                Root = root,
+                Label = connected.TryGetValue(root, out var drive) ? DescribeDrive(drive) : $"{root} (לא מחובר)",
+                IsBlocked = workingConfig.BlockedDriveRoots.Contains(root, StringComparer.OrdinalIgnoreCase)
+            });
+        }
+    }
+
+    private static string DescribeDrive(DriveInfo drive)
+    {
+        try
+        {
+            return drive.IsReady ? $"{drive.Name} {drive.VolumeLabel}" : drive.Name;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return drive.Name;
+        }
     }
 
     private void CmbProfile_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -207,6 +245,8 @@ public partial class AdminSettingsWindow : Window
 
         workingConfig.AllowedExtensions = extensions.ToList();
         workingConfig.AllowedExplicitDirectories = directories.ToList();
+
+        workingConfig.BlockedDriveRoots = drives.Where(d => d.IsBlocked).Select(d => d.Root).ToList();
 
         if (configService.Save(workingConfig, out string error))
         {

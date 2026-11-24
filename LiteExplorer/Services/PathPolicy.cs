@@ -49,6 +49,8 @@ public class PathPolicy : IPathPolicy
 
     public ISet<string> BlockedVolumeSerialNumbers { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
+    public ISet<string> BlockedDriveRoots { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
     public static string SystemDriveRoot
     {
         get
@@ -104,13 +106,16 @@ public class PathPolicy : IPathPolicy
             : path + Path.DirectorySeparatorChar;
     }
 
-    public bool IsDriveAllowed(DriveInfo drive, out string reason)
+    /// <summary>
+    /// Blocks that apply even to explicitly approved drives and folders.
+    /// </summary>
+    private bool IsDriveHardBlocked(DriveInfo drive, out string reason)
     {
         reason = null;
         if (drive == null)
         {
             reason = "הכונן אינו קיים.";
-            return false;
+            return true;
         }
 
         string driveRoot;
@@ -128,14 +133,13 @@ public class PathPolicy : IPathPolicy
             string.Equals(driveRoot, @"C:\", StringComparison.OrdinalIgnoreCase))
         {
             reason = "הגישה לכונן המערכת (C:) חסומה מטעמי אבטחה.";
-            return false;
+            return true;
         }
 
-        bool isExplicitlyAllowed = AllowedDriveRoots.Contains(driveRoot) || AllowedDriveRoots.Contains(drive.Name);
-        if (!drive.IsReady && !isExplicitlyAllowed)
+        if (BlockedDriveRoots.Contains(driveRoot) || BlockedDriveRoots.Contains(drive.Name))
         {
-            reason = "הכונן אינו מוכן לשימוש (יתכן שאין מדיה בהתקן).";
-            return false;
+            reason = "הגישה לכונן זה נחסמה על ידי מנהל המערכת.";
+            return true;
         }
 
         try
@@ -148,7 +152,7 @@ public class PathPolicy : IPathPolicy
                     label.Contains("אוצר החוכמה"))
                 {
                     reason = "הגישה לכונני תוכנת 'אוצר החוכמה' חסומה.";
-                    return false;
+                    return true;
                 }
             }
         }
@@ -163,7 +167,7 @@ public class PathPolicy : IPathPolicy
                 Directory.Exists(Path.Combine(driveRoot, "Otzar")))
             {
                 reason = "הגישה לכונני תוכנת 'אוצר החוכמה' חסומה.";
-                return false;
+                return true;
             }
         }
         catch
@@ -174,42 +178,37 @@ public class PathPolicy : IPathPolicy
         if (!string.IsNullOrEmpty(serialNumber) && BlockedVolumeSerialNumbers.Contains(serialNumber))
         {
             reason = "הגישה לכונן זה נחסמה לפי מזהה אמצעי האחסון.";
-            return false;
+            return true;
         }
+
+        return false;
+    }
+
+    public bool IsDriveAllowed(DriveInfo drive, out string reason)
+    {
+        if (IsDriveHardBlocked(drive, out reason))
+            return false;
+
+        string driveRoot = EnsureTrailingSeparator(drive.Name);
+        string serialNumber = Interop.GetVolumeSerialNumber(driveRoot);
+        bool isExplicit = AllowedDriveRoots.Contains(driveRoot) ||
+                          (!string.IsNullOrEmpty(serialNumber) && AllowedVolumeSerialNumbers.Contains(serialNumber));
+        if (isExplicit)
+            return true;
 
         if (Profile == KioskProfile.Controlled)
         {
-            bool isExplicit = AllowedDriveRoots.Contains(driveRoot) ||
-                              AllowedDriveRoots.Contains(drive.Name) ||
-                              (!string.IsNullOrEmpty(serialNumber) && AllowedVolumeSerialNumbers.Contains(serialNumber));
-            bool hasExplicitDir = AllowedExplicitDirectories.Any(dir =>
-            {
-                var r = Path.GetPathRoot(dir);
-                return string.Equals(r, driveRoot, StringComparison.OrdinalIgnoreCase) ||
-                       string.Equals(r, drive.Name, StringComparison.OrdinalIgnoreCase);
-            });
-
-            if (!isExplicit && !hasExplicitDir)
-            {
-                reason = "בפרופיל עמדה מבוקרת, הגישה מותרת לכוננים ותיקיות שהוגדרו מראש בלבד.";
-                return false;
-            }
+            reason = "בפרופיל עמדה מבוקרת, הגישה מותרת לכוננים ותיקיות שהוגדרו מראש בלבד.";
+            return false;
         }
 
-        if (drive.DriveType == DriveType.Removable)
+        if (!drive.IsReady)
         {
-            return true;
+            reason = "הכונן אינו מוכן לשימוש (יתכן שאין מדיה בהתקן).";
+            return false;
         }
 
-        if (AllowedDriveRoots.Contains(driveRoot) ||
-            AllowedDriveRoots.Contains(drive.Name) ||
-            (!string.IsNullOrEmpty(serialNumber) && AllowedVolumeSerialNumbers.Contains(serialNumber)))
-        {
-            return true;
-        }
-
-        reason = "הכונן אינו מורשה. המערכת מאפשרת גישה לכוננים נשלפים (USB) בלבד.";
-        return false;
+        return true;
     }
 
     public IEnumerable<DriveInfo> GetAllowedDrives()
@@ -337,11 +336,6 @@ public class PathPolicy : IPathPolicy
             return false;
         }
 
-        if (IsPathWithinAllowedExplicitDirectory(normalizedPath))
-        {
-            return true;
-        }
-
         DriveInfo drive;
         try
         {
@@ -353,7 +347,25 @@ public class PathPolicy : IPathPolicy
             return false;
         }
 
-        return IsDriveAllowed(drive, out reason);
+        if (IsDriveHardBlocked(drive, out reason))
+            return false;
+
+        return IsPathWithinAllowedExplicitDirectory(normalizedPath) || IsDriveAllowed(drive, out reason);
+    }
+
+    /// <summary>
+    /// A mapped network drive resolves to its own share; a path under that share is not a redirect.
+    /// </summary>
+    private static bool IsOnMappedShare(string path, string canonicalPath)
+    {
+        if (!canonicalPath.StartsWith(@"\\", StringComparison.Ordinal))
+            return false;
+
+        string root = EnsureTrailingSeparator(Path.GetPathRoot(path));
+        string share = Interop.GetFinalPath(root);
+        string expected = EnsureTrailingSeparator(share) + path.Substring(root.Length);
+        return share.StartsWith(@"\\", StringComparison.Ordinal) &&
+               string.Equals(expected.TrimEnd('\\'), canonicalPath.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase);
     }
 
     private bool ValidateReparsePoint(string path, out string finalResolvedPath, out string reason)
@@ -363,7 +375,8 @@ public class PathPolicy : IPathPolicy
 
         string canonicalPath = Interop.GetFinalPath(path);
         if (!string.IsNullOrWhiteSpace(canonicalPath) &&
-            !string.Equals(canonicalPath, path, StringComparison.OrdinalIgnoreCase))
+            !string.Equals(canonicalPath, path, StringComparison.OrdinalIgnoreCase) &&
+            !IsOnMappedShare(path, canonicalPath))
         {
             if (!TryNormalizePath(canonicalPath, out string normalizedCanonical, out reason))
             {

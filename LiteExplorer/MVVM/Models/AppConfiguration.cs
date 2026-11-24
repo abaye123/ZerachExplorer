@@ -18,6 +18,7 @@ public class AppConfiguration
     {
         "Otzar Hahochma", "Otzar", "אוצר החוכמה"
     };
+    public List<string> BlockedDriveRoots { get; set; } = new();
     public List<string> BlockedVolumeSerialNumbers { get; set; } = new();
     public PathPermissions Permissions { get; set; } = PathPermissions.CreateStandard();
 }

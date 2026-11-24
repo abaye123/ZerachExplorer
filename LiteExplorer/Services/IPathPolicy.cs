@@ -51,6 +51,11 @@ public interface IPathPolicy
     ISet<string> BlockedVolumeLabels { get; }
 
     /// <summary>
+    /// Drive roots blocked by the administrator (e.g. "D:\").
+    /// </summary>
+    ISet<string> BlockedDriveRoots { get; }
+
+    /// <summary>
     /// Excluded volume serial numbers.
     /// </summary>
     ISet<string> BlockedVolumeSerialNumbers { get; }
