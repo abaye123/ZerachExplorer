@@ -195,18 +195,31 @@ public static class Interop
 
         using (handle)
         {
-            // Lock volume with short retry count to tolerate transient file system locks.
-            for (int i = 0; i < 3; i++)
+            // Never dismount without the lock: a forced dismount invalidates files
+            // that other programs still have open and can lose unsaved data.
+            bool locked = false;
+            int lockError = 0;
+            for (int i = 0; i < 5 && !locked; i++)
             {
-                if (DeviceIoControl(handle, FSCTL_LOCK_VOLUME, IntPtr.Zero, 0, IntPtr.Zero, 0, out _, IntPtr.Zero))
-                {
-                    break;
-                }
-                System.Threading.Thread.Sleep(100);
+                if (i > 0)
+                    System.Threading.Thread.Sleep(200);
+
+                locked = DeviceIoControl(handle, FSCTL_LOCK_VOLUME, IntPtr.Zero, 0, IntPtr.Zero, 0, out _, IntPtr.Zero);
+                if (!locked)
+                    lockError = Marshal.GetLastWin32Error();
             }
 
-            // Dismount the volume to commit pending writes.
-            DeviceIoControl(handle, FSCTL_DISMOUNT_VOLUME, IntPtr.Zero, 0, IntPtr.Zero, 0, out _, IntPtr.Zero);
+            if (!locked)
+            {
+                errorMessage = new Win32Exception(lockError).Message;
+                return false;
+            }
+
+            if (!DeviceIoControl(handle, FSCTL_DISMOUNT_VOLUME, IntPtr.Zero, 0, IntPtr.Zero, 0, out _, IntPtr.Zero))
+            {
+                errorMessage = new Win32Exception(Marshal.GetLastWin32Error()).Message;
+                return false;
+            }
 
             // Send eject request to hardware layer.
             if (DeviceIoControl(handle, IOCTL_STORAGE_EJECT_MEDIA, IntPtr.Zero, 0, IntPtr.Zero, 0, out _, IntPtr.Zero))
@@ -218,5 +231,45 @@ public static class Interop
             errorMessage = new Win32Exception(lastErr).Message;
             return false;
         }
+    }
+
+    private const uint FO_DELETE = 3;
+    private const ushort FOF_NOCONFIRMATION = 0x0010;
+    private const ushort FOF_ALLOWUNDO = 0x0040;
+    private const ushort FOF_WANTNUKEWARNING = 0x4000;
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct ShFileOpStruct
+    {
+        public IntPtr Window;
+        public uint Function;
+        public string From;
+        public string? To;
+        public ushort Flags;
+        [MarshalAs(UnmanagedType.Bool)]
+        public bool AnyOperationsAborted;
+        public IntPtr NameMappings;
+        public string? ProgressTitle;
+    }
+
+    [DllImport("shell32.dll", EntryPoint = "SHFileOperationW", CharSet = CharSet.Unicode)]
+    private static extern int SHFileOperation(ref ShFileOpStruct operation);
+
+    /// <summary>
+    /// Sends a file or folder to the recycle bin. The shell itself warns before any
+    /// permanent deletion, for example when the item is too large for the bin.
+    /// </summary>
+    public static int SendToRecycleBin(string path, out bool aborted)
+    {
+        var operation = new ShFileOpStruct
+        {
+            Function = FO_DELETE,
+            From = path + "\0\0",
+            Flags = FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_WANTNUKEWARNING
+        };
+
+        int result = SHFileOperation(ref operation);
+        aborted = operation.AnyOperationsAborted;
+        return result;
     }
 }

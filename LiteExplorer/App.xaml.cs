@@ -71,9 +71,18 @@ public partial class App
     private static void RegisterServices()
     {
         var services = new ServiceCollection();
+        ConfigureServices(services);
+        Container = services.BuildServiceProvider();
+    }
 
+    internal static void ConfigureServices(IServiceCollection services)
+    {
         services.AddSingleton<IConfigurationService, ConfigurationService>();
-        services.AddSingleton<IPathPolicy, PathPolicy>();
+        // Constructed explicitly: the container would inject an empty extension list.
+        services.AddSingleton<IPathPolicy>(_ => new PathPolicy());
+        services.AddSingleton<IAuditService>(_ => AuditService.Instance);
+        services.AddSingleton<IFileTransferService, FileTransferService>();
+        services.AddSingleton<IFileDeletionService, FileDeletionService>();
         services.AddSingleton<IDriveEjectService, DriveEjectService>();
         services.AddSingleton<MainWindowViewModel>();
         services.AddSingleton<MainWindow>(provider => new()
@@ -82,7 +91,5 @@ public partial class App
         });
 
         services.AddTransient<TabContentViewModel>();
-
-        Container = services.BuildServiceProvider();
     }
 }

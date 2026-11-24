@@ -41,8 +41,9 @@ internal class TabContentViewModel : ViewModel, IDisposable
 
     private long currentScanId;
 
-    private static readonly List<string> InternalClipboard = new();
-    private static bool IsClipboardCut = false;
+    private const string DropEffectFormat = "Preferred DropEffect";
+    private readonly IFileTransferService fileTransferService;
+    private readonly IFileDeletionService fileDeletionService;
     private readonly List<FileSystemObject> selectedFileSystemObjects = new();
 
     private FileSystemWatcher currentWatcher;
@@ -233,6 +234,8 @@ internal class TabContentViewModel : ViewModel, IDisposable
 
         this.driveEjectService = driveEjectService ?? App.Container?.GetService<IDriveEjectService>() ?? new DriveEjectService(this.pathPolicy);
         this.configurationService = configurationService ?? App.Container?.GetService<IConfigurationService>() ?? new ConfigurationService();
+        fileTransferService = App.Container?.GetService<IFileTransferService>() ?? new FileTransferService(this.pathPolicy, AuditService.Instance);
+        fileDeletionService = App.Container?.GetService<IFileDeletionService>() ?? new FileDeletionService(this.pathPolicy, AuditService.Instance);
 
         OpenCmd = new ActionCommand(OnOpenCmdExecuted);
 
@@ -272,6 +275,8 @@ internal class TabContentViewModel : ViewModel, IDisposable
         };
 
         DeviceNotificationService.Instance.DeviceChanged += OnDeviceNotification;
+        DeviceNotificationService.Instance.DriveReleasing += OnDriveReleasing;
+        DeviceNotificationService.Instance.DriveReleaseFinished += OnDriveReleaseFinished;
 
         UpdateBreadcrumbs(TabPath);
 
@@ -286,6 +291,8 @@ internal class TabContentViewModel : ViewModel, IDisposable
     public void Dispose()
     {
         DeviceNotificationService.Instance.DeviceChanged -= OnDeviceNotification;
+        DeviceNotificationService.Instance.DriveReleasing -= OnDriveReleasing;
+        DeviceNotificationService.Instance.DriveReleaseFinished -= OnDriveReleaseFinished;
         SessionService.Instance.SessionReset -= OnSessionReset;
         StopWatcher();
         refreshDebounceTimer?.Stop();
@@ -376,18 +383,13 @@ internal class TabContentViewModel : ViewModel, IDisposable
 
     private static bool HasClipboardData()
     {
-        lock (InternalClipboard)
-        {
-            if (InternalClipboard.Count > 0)
-                return true;
-        }
-
         try
         {
             return Clipboard.ContainsFileDropList();
         }
-        catch
+        catch (System.Runtime.InteropServices.ExternalException)
         {
+            // Another process holds the clipboard.
             return false;
         }
     }
@@ -482,27 +484,7 @@ internal class TabContentViewModel : ViewModel, IDisposable
         if (pathPolicy.Permissions != null && !pathPolicy.Permissions.CanCopyFrom)
             return;
 
-        var paths = FilterClipboardPaths(GetSelectedOrCurrentPaths(p));
-        if (paths.Count == 0) return;
-
-        lock (InternalClipboard)
-        {
-            InternalClipboard.Clear();
-            InternalClipboard.AddRange(paths);
-            IsClipboardCut = false;
-        }
-
-        try
-        {
-            var collection = new System.Collections.Specialized.StringCollection();
-            collection.AddRange(paths.ToArray());
-            Clipboard.SetFileDropList(collection);
-        }
-        catch
-        {
-        }
-
-        InvalidateCommandStates();
+        PlaceOnClipboard(FilterClipboardPaths(GetSelectedOrCurrentPaths(p)), DragDropEffects.Copy);
     }
 
     private void OnCutCmdExecuted(object p)
@@ -510,27 +492,58 @@ internal class TabContentViewModel : ViewModel, IDisposable
         if (pathPolicy.Permissions != null && (!pathPolicy.Permissions.CanCopyFrom || !pathPolicy.Permissions.CanDelete))
             return;
 
-        var paths = FilterClipboardPaths(GetSelectedOrCurrentPaths(p));
+        PlaceOnClipboard(FilterClipboardPaths(GetSelectedOrCurrentPaths(p)), DragDropEffects.Move);
+    }
+
+    private static void PlaceOnClipboard(List<string> paths, DragDropEffects effect)
+    {
         if (paths.Count == 0) return;
 
-        lock (InternalClipboard)
-        {
-            InternalClipboard.Clear();
-            InternalClipboard.AddRange(paths);
-            IsClipboardCut = true;
-        }
+        var collection = new System.Collections.Specialized.StringCollection();
+        collection.AddRange(paths.ToArray());
+
+        var data = new DataObject();
+        data.SetFileDropList(collection);
+        data.SetData(DropEffectFormat, new MemoryStream(BitConverter.GetBytes((int)effect)));
 
         try
         {
-            var collection = new System.Collections.Specialized.StringCollection();
-            collection.AddRange(paths.ToArray());
-            Clipboard.SetFileDropList(collection);
+            Clipboard.SetDataObject(data, copy: true);
         }
-        catch
+        catch (System.Runtime.InteropServices.ExternalException ex)
         {
+            CrashLogger.LogException(ex, "Clipboard write failed");
+            MessageBox.Show("לוח ההעתקה תפוס על ידי תוכנה אחרת. נסה שוב.", "העתקה", MessageBoxButton.OK, MessageBoxImage.Warning, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
         }
 
         InvalidateCommandStates();
+    }
+
+    private static List<string> ReadClipboard(out bool isCut)
+    {
+        isCut = false;
+        var paths = new List<string>();
+
+        try
+        {
+            var data = Clipboard.GetDataObject();
+            if (data?.GetData(DataFormats.FileDrop) is not string[] files)
+                return paths;
+
+            paths.AddRange(files.Where(file => !string.IsNullOrWhiteSpace(file)));
+
+            if (data.GetData(DropEffectFormat) is MemoryStream { Length: >= sizeof(int) } stream)
+            {
+                var effect = (DragDropEffects)BitConverter.ToInt32(stream.ToArray(), 0);
+                isCut = (effect & DragDropEffects.Move) != 0 && (effect & DragDropEffects.Copy) == 0;
+            }
+        }
+        catch (System.Runtime.InteropServices.ExternalException ex)
+        {
+            CrashLogger.LogException(ex, "Clipboard read failed");
+        }
+
+        return paths;
     }
 
     private async void OnPasteCmdExecuted(object p)
@@ -547,189 +560,43 @@ internal class TabContentViewModel : ViewModel, IDisposable
             return;
         }
 
-        List<string> sourcesToPaste;
-        bool isCut;
-
-        lock (InternalClipboard)
-        {
-            if (InternalClipboard.Count > 0)
-            {
-                sourcesToPaste = InternalClipboard.ToList();
-                isCut = IsClipboardCut;
-            }
-            else
-            {
-                sourcesToPaste = new List<string>();
-                isCut = false;
-                try
-                {
-                    if (Clipboard.ContainsFileDropList())
-                    {
-                        var dropList = Clipboard.GetFileDropList();
-                        foreach (var item in dropList)
-                        {
-                            if (!string.IsNullOrWhiteSpace(item))
-                                sourcesToPaste.Add(item);
-                        }
-                    }
-                }
-                catch
-                {
-                }
-            }
-        }
-
-        if (sourcesToPaste.Count == 0)
+        var sources = ReadClipboard(out bool isCut);
+        if (sources.Count == 0)
             return;
 
         string targetDir = TabPath;
-        var errors = new List<string>();
-        ConflictResolutionAction? globalResolution = null;
-
         IsLoading = true;
         try
         {
-            await Task.Run(() =>
+            var result = await Task.Run(() => fileTransferService.Transfer(sources, targetDir, isCut, PromptForConflict));
+
+            if (isCut && !result.Cancelled)
             {
-                foreach (var source in sourcesToPaste)
-                {
-                    bool isFile = File.Exists(source);
-                    bool isDir = Directory.Exists(source);
-
-                    if (!isFile && !isDir)
-                    {
-                        errors.Add($"הפריט '{source}' אינו קיים במערכת.");
-                        continue;
-                    }
-
-                    if (isFile)
-                    {
-                        if (isCut)
-                        {
-                            if (!pathPolicy.CanMoveFile(source, targetDir, out var reason))
-                            {
-                                errors.Add($"{Path.GetFileName(source)}: {reason}");
-                                continue;
-                            }
-                        }
-                        else
-                        {
-                            if (!pathPolicy.CanCopyFile(source, targetDir, out var reason))
-                            {
-                                errors.Add($"{Path.GetFileName(source)}: {reason}");
-                                continue;
-                            }
-                        }
-
-                        string fileName = Path.GetFileName(source);
-                        string destFile = Path.Combine(targetDir, fileName);
-
-                        if (File.Exists(destFile))
-                        {
-                            ConflictResolutionAction action;
-                            if (globalResolution.HasValue)
-                            {
-                                action = globalResolution.Value;
-                            }
-                            else
-                            {
-                                ConflictResolutionResult dialogResult = null;
-                                Application.Current?.Dispatcher?.Invoke(() =>
-                                {
-                                    dialogResult = ConflictResolutionDialog.Prompt(
-                                        Application.Current?.MainWindow,
-                                        fileName,
-                                        destFile,
-                                        source);
-                                });
-
-                                if (dialogResult == null || dialogResult.Action == ConflictResolutionAction.Cancel)
-                                    break;
-
-                                if (dialogResult.ApplyToAll)
-                                    globalResolution = dialogResult.Action;
-
-                                action = dialogResult.Action;
-                            }
-
-                            if (action == ConflictResolutionAction.Skip)
-                                continue;
-
-                            if (action == ConflictResolutionAction.KeepBoth)
-                                destFile = GenerateUniqueFilePath(targetDir, fileName);
-                        }
-
-                        try
-                        {
-                            if (isCut)
-                            {
-                                File.Move(source, destFile, overwrite: true);
-                            }
-                            else
-                            {
-                                File.Copy(source, destFile, overwrite: true);
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            errors.Add($"{fileName}: {ex.Message}");
-                        }
-                    }
-                    else
-                    {
-                        if (!pathPolicy.CanTransferDirectory(source, targetDir, isCut, out var reason))
-                        {
-                            errors.Add($"{Path.GetFileName(source)}: {reason}");
-                            continue;
-                        }
-
-                        string dirName = Path.GetFileName(source.TrimEnd('\\', '/'));
-                        string destSubDir = Path.Combine(targetDir, dirName);
-
-                        try
-                        {
-                            if (isCut)
-                            {
-                                MoveDirectory(source, destSubDir, pathPolicy, errors);
-                            }
-                            else
-                            {
-                                CopyDirectoryRecursive(source, destSubDir, pathPolicy, errors);
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            errors.Add($"{dirName}: {ex.Message}");
-                        }
-                    }
-                }
-            });
-
-            if (isCut)
-            {
-                lock (InternalClipboard)
-                {
-                    InternalClipboard.Clear();
-                }
                 try
                 {
                     Clipboard.Clear();
                 }
-                catch
+                catch (System.Runtime.InteropServices.ExternalException ex)
                 {
+                    CrashLogger.LogException(ex, "Clipboard clear failed");
                 }
             }
 
             OpenTabPath();
 
-            if (errors.Count > 0)
+            if (result.Errors.Count > 0)
             {
-                string msg = $"חלק מהקבצים לא הועברו:\n\n{string.Join("\n", errors.Take(5))}";
-                if (errors.Count > 5)
-                    msg += $"\nועוד {errors.Count - 5} שגיאות נוספות.";
+                string msg = $"חלק מהקבצים לא הועברו:\n\n{string.Join("\n", result.Errors.Take(5))}";
+                if (result.Errors.Count > 5)
+                    msg += $"\nועוד {result.Errors.Count - 5} שגיאות נוספות.";
 
                 MessageBox.Show(msg, "הודעת העברה", MessageBoxButton.OK, MessageBoxImage.Warning, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
             }
+        }
+        catch (Exception ex)
+        {
+            CrashLogger.LogException(ex, $"Paste into {targetDir} failed");
+            MessageBox.Show($"ההעברה נכשלה: {ex.Message}", "שגיאה", MessageBoxButton.OK, MessageBoxImage.Error, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
         }
         finally
         {
@@ -738,79 +605,9 @@ internal class TabContentViewModel : ViewModel, IDisposable
         }
     }
 
-    private static string GenerateUniqueFilePath(string destinationDirectory, string fileName)
-    {
-        string nameWithoutExt = Path.GetFileNameWithoutExtension(fileName);
-        string ext = Path.GetExtension(fileName);
-        int counter = 1;
-        string candidate;
-        do
-        {
-            candidate = Path.Combine(destinationDirectory, $"{nameWithoutExt} ({counter}){ext}");
-            counter++;
-        } while (File.Exists(candidate) || Directory.Exists(candidate));
-
-        return candidate;
-    }
-
-    private static void CopyDirectoryRecursive(string sourceDir, string destDir, IPathPolicy policy, List<string> errors)
-    {
-        if (!policy.CanNavigate(sourceDir, out var dirReason))
-        {
-            errors?.Add($"{Path.GetFileName(sourceDir)}: {dirReason}");
-            return;
-        }
-
-        Directory.CreateDirectory(destDir);
-        foreach (var file in Directory.GetFiles(sourceDir))
-        {
-            if (!policy.CanCopyFile(file, destDir, out var fileReason))
-            {
-                errors?.Add($"{Path.GetFileName(file)}: {fileReason}");
-                continue;
-            }
-
-            string destFile = Path.Combine(destDir, Path.GetFileName(file));
-            File.Copy(file, destFile, overwrite: true);
-        }
-        foreach (var subDir in Directory.GetDirectories(sourceDir))
-        {
-            string destSub = Path.Combine(destDir, Path.GetFileName(subDir));
-            CopyDirectoryRecursive(subDir, destSub, policy, errors);
-        }
-    }
-
-    private static void MoveDirectory(string sourceDir, string destDir, IPathPolicy policy, List<string> errors)
-    {
-        if (!policy.CanNavigate(sourceDir, out var dirReason))
-        {
-            errors?.Add($"{Path.GetFileName(sourceDir)}: {dirReason}");
-            return;
-        }
-
-        Directory.CreateDirectory(destDir);
-        foreach (var file in Directory.GetFiles(sourceDir))
-        {
-            if (!policy.CanMoveFile(file, destDir, out var fileReason))
-            {
-                errors?.Add($"{Path.GetFileName(file)}: {fileReason}");
-                continue;
-            }
-
-            string destFile = Path.Combine(destDir, Path.GetFileName(file));
-            File.Move(file, destFile, overwrite: true);
-        }
-        foreach (var subDir in Directory.GetDirectories(sourceDir))
-        {
-            string destSub = Path.Combine(destDir, Path.GetFileName(subDir));
-            MoveDirectory(subDir, destSub, policy, errors);
-        }
-
-        if (Directory.Exists(sourceDir) && Directory.GetFileSystemEntries(sourceDir).Length == 0)
-        {
-            Directory.Delete(sourceDir, recursive: false);
-        }
-    }
+    private static ConflictResolutionResult PromptForConflict(string fileName, string existingPath, string incomingPath) =>
+        Application.Current.Dispatcher.Invoke(() =>
+            ConflictResolutionDialog.Prompt(Application.Current.MainWindow, fileName, existingPath, incomingPath));
 
     #endregion
 
@@ -869,7 +666,19 @@ internal class TabContentViewModel : ViewModel, IDisposable
             return;
         }
 
-        bool success = driveEjectService.EjectDrive(targetDrive, out string message);
+        // Folder watchers in every open tab hold the volume open and would fail the lock.
+        DeviceNotificationService.Instance.NotifyDriveReleasing(targetDrive);
+        bool success;
+        string message;
+        try
+        {
+            success = driveEjectService.EjectDrive(targetDrive, out message);
+        }
+        finally
+        {
+            DeviceNotificationService.Instance.NotifyDriveReleaseFinished(targetDrive);
+        }
+
         AuditService.Instance.Log(AuditEventType.DriveEjected, targetDrive, message, success);
         MessageBox.Show(
             message,
@@ -946,195 +755,54 @@ internal class TabContentViewModel : ViewModel, IDisposable
 
     private void OnDeletePath(object p)
     {
-        var targets = GetSelectedOrCurrentPaths(p);
-        if (targets.Count == 0) return;
+        var allowed = new List<string>();
+        var errors = new List<string>();
 
-        if (targets.Count > 1)
+        foreach (var target in GetSelectedOrCurrentPaths(p))
         {
-            var confirmMulti = MessageBox.Show(
-                $"האם אתה בטוח שברצונך להעביר {targets.Count} פריטים שנבחרו לסל המיחזור?",
-                "אישור מחיקת פריטים",
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Question,
-                MessageBoxResult.No,
-                MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
-
-            if (confirmMulti != MessageBoxResult.Yes) return;
-
-            var multiErrors = new List<string>();
-            foreach (var target in targets)
-            {
-                if (!pathPolicy.CanDelete(target, out var reason))
-                {
-                    multiErrors.Add($"{Path.GetFileName(target)}: {reason}");
-                    continue;
-                }
-
-                try
-                {
-                    if (Directory.Exists(target))
-                    {
-                        Microsoft.VisualBasic.FileIO.FileSystem.DeleteDirectory(
-                            target,
-                            Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs,
-                            Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
-                    }
-                    else if (File.Exists(target))
-                    {
-                        Microsoft.VisualBasic.FileIO.FileSystem.DeleteFile(
-                            target,
-                            Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs,
-                            Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    multiErrors.Add($"{Path.GetFileName(target)}: {ex.Message}");
-                }
-            }
-
-            OpenTabPath();
-            InvalidateCommandStates();
-
-            if (multiErrors.Count > 0)
-            {
-                MessageBox.Show($"שגיאה במחיקת חלק מהפריטים:\n{string.Join("\n", multiErrors.Take(5))}", "שגיאה במחיקה", MessageBoxButton.OK, MessageBoxImage.Warning, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
-            }
-            return;
-        }
-
-        string rawPath = targets[0];
-        if (!pathPolicy.CanDelete(rawPath, out var deleteReason))
-        {
-            MessageBox.Show(deleteReason, "שגיאה במחיקה", MessageBoxButton.OK, MessageBoxImage.Warning, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
-            return;
-        }
-
-        string fullPath;
-        try
-        {
-            fullPath = Path.GetFullPath(rawPath);
-        }
-        catch
-        {
-            MessageBox.Show("נתיב בלתי תקין.", "שגיאה", MessageBoxButton.OK, MessageBoxImage.Error, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
-            return;
-        }
-
-        bool isDirectory = Directory.Exists(fullPath);
-        bool isFile = File.Exists(fullPath);
-
-        if (!isDirectory && !isFile)
-        {
-            MessageBox.Show("הפריט למחיקה אינו קיים במערכת.", "שגיאה", MessageBoxButton.OK, MessageBoxImage.Error, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
-            return;
-        }
-
-        int fileCount = 0;
-        int dirCount = 0;
-        int hiddenCount = 0;
-
-        if (isDirectory)
-        {
-            try
-            {
-                var dirInfo = new DirectoryInfo(fullPath);
-                foreach (var fsi in dirInfo.EnumerateFileSystemInfos("*", SearchOption.AllDirectories))
-                {
-                    if ((fsi.Attributes & (FileAttributes.Hidden | FileAttributes.System)) != 0)
-                    {
-                        hiddenCount++;
-                    }
-
-                    if ((fsi.Attributes & FileAttributes.Directory) == FileAttributes.Directory)
-                        dirCount++;
-                    else
-                        fileCount++;
-                }
-            }
-            catch
-            {
-            }
-        }
-
-        string confirmMessage;
-        if (isDirectory)
-        {
-            confirmMessage = $"האם אתה בטוח שברצונך למחוק את התיקייה:\n{fullPath}?\n\nפירוט תכולה:\n• מספר קבצים: {fileCount}\n• תתי-תיקיות: {dirCount}";
-            if (hiddenCount > 0)
-            {
-                confirmMessage += $"\n\n⚠️ שים לב: התיקייה מכילה {hiddenCount} פריטים מוסתרים או פריטי מערכת!";
-            }
-            confirmMessage += "\n\nהפריטים יועברו לסל המיחזור.";
-        }
-        else
-        {
-            confirmMessage = $"האם אתה בטוח שברצונך למחוק את הקובץ:\n{fullPath}?\n\nהקובץ יועבר לסל המיחזור.";
-        }
-
-        MessageBoxResult result = MessageBox.Show(
-            confirmMessage,
-            "אישור מחיקה",
-            MessageBoxButton.YesNo,
-            hiddenCount > 0 ? MessageBoxImage.Warning : MessageBoxImage.Question,
-            MessageBoxResult.No,
-            MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
-
-        if (result != MessageBoxResult.Yes)
-            return;
-
-        try
-        {
-            if (isDirectory)
-            {
-                Microsoft.VisualBasic.FileIO.FileSystem.DeleteDirectory(
-                    fullPath,
-                    Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs,
-                    Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
-            }
+            if (!pathPolicy.CanDelete(target, out var reason))
+                errors.Add($"{Path.GetFileName(target)}: {reason}");
+            else if (!File.Exists(target) && !Directory.Exists(target))
+                errors.Add($"{Path.GetFileName(target)}: הפריט אינו קיים.");
             else
-            {
-                Microsoft.VisualBasic.FileIO.FileSystem.DeleteFile(
-                    fullPath,
-                    Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs,
-                    Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
-            }
-
-            OpenTabPath();
-            InvalidateCommandStates();
-            MessageBox.Show("המחיקה בוצעה בהצלחה (הועבר לסל המיחזור).", "המחיקה הצליחה", MessageBoxButton.OK, MessageBoxImage.Information, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
+                allowed.Add(target);
         }
-        catch (Exception ex)
-        {
-            CrashLogger.LogException(ex, $"Recycle bin delete failed for: {fullPath}");
 
-            var fallbackResult = MessageBox.Show(
-                $"לא ניתן היה להעביר את הפריט לסל המיחזור ({ex.Message}).\nהאם ברצונך למחוק לצמיתות את הפריט?",
-                "אזהרת מחיקה לצמיתות",
+        if (allowed.Count > 0)
+        {
+            bool recyclable = allowed.All(fileDeletionService.SupportsRecycleBin);
+            string subject = allowed.Count == 1 ? $"את הפריט:\n{allowed[0]}" : $"{allowed.Count} פריטים";
+            string consequence = recyclable
+                ? "הפריטים יועברו לסל המיחזור."
+                : "שים לב: אין בכונן זה סל מיחזור. המחיקה סופית ולא ניתן יהיה לשחזר!";
+
+            var answer = MessageBox.Show(
+                $"האם אתה בטוח שברצונך למחוק {subject}?\n\n{consequence}",
+                recyclable ? "אישור מחיקה" : "אזהרת מחיקה לצמיתות",
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Warning,
                 MessageBoxResult.No,
                 MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
+            if (answer != MessageBoxResult.Yes)
+                return;
 
-            if (fallbackResult == MessageBoxResult.Yes)
+            foreach (var target in allowed)
             {
-                try
-                {
-                    if (isDirectory)
-                        Directory.Delete(fullPath, true);
-                    else
-                        File.Delete(fullPath);
-
-                    OpenTabPath();
-                    InvalidateCommandStates();
-                    MessageBox.Show("המחיקה לצמיתות בוצעה בהצלחה.", "המחיקה הצליחה", MessageBoxButton.OK, MessageBoxImage.Information, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
-                }
-                catch (Exception ex2)
-                {
-                    CrashLogger.LogException(ex2, $"Permanent delete failed for: {fullPath}");
-                    MessageBox.Show($"המחיקה נכשלה: {ex2.Message}", "שגיאה", MessageBoxButton.OK, MessageBoxImage.Error, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
-                }
+                string error;
+                bool deleted = recyclable
+                    ? fileDeletionService.MoveToRecycleBin(target, out error)
+                    : fileDeletionService.DeletePermanently(target, out error);
+                if (!deleted)
+                    errors.Add($"{Path.GetFileName(target)}: {error}");
             }
+
+            OpenTabPath();
+            InvalidateCommandStates();
+        }
+
+        if (errors.Count > 0)
+        {
+            MessageBox.Show($"שגיאה במחיקת חלק מהפריטים:\n{string.Join("\n", errors.Take(5))}", "שגיאה במחיקה", MessageBoxButton.OK, MessageBoxImage.Warning, MessageBoxResult.OK, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
         }
     }
 
@@ -1488,6 +1156,26 @@ internal class TabContentViewModel : ViewModel, IDisposable
                             int progress = (int)((double)processedDrives / driveCount * 100);
                             await DispatchOnUiThreadAsync(() => ProgressPercent = progress, token);
                         }
+                    }
+
+                    foreach (var directory in pathPolicy.AllowedExplicitDirectories.ToList())
+                    {
+                        token.ThrowIfCancellationRequested();
+
+                        if (!Directory.Exists(directory) || !pathPolicy.CanNavigate(directory, out _))
+                            continue;
+
+                        string directoryName = Path.GetFileName(directory.TrimEnd('\\', '/'));
+                        driveBatch.Add(new FileSystemObject
+                        {
+                            Image = FolderManager.GetImageSource(directory, ItemState.Undefined),
+                            Name = string.IsNullOrEmpty(directoryName) ? directory : directoryName,
+                            Path = directory,
+                            TotalSpace = NotApplicableSpaceSentinel,
+                            FreeSpace = NotApplicableSpaceSentinel,
+                            Type = "תיקיית קבצים",
+                            IsDirectory = true
+                        });
                     }
 
                     await DispatchOnUiThreadAsync(() =>
@@ -2035,6 +1723,27 @@ internal class TabContentViewModel : ViewModel, IDisposable
         catch
         {
         }
+    }
+
+    private bool IsOnDrive(string root) =>
+        !string.IsNullOrEmpty(TabPath) && string.Equals(Path.GetPathRoot(TabPath), root, StringComparison.OrdinalIgnoreCase);
+
+    private void OnDriveReleasing(object sender, string root)
+    {
+        if (!IsOnDrive(root)) return;
+
+        lock (scanLock)
+        {
+            currentScanCts?.Cancel();
+        }
+        StopWatcher();
+    }
+
+    private void OnDriveReleaseFinished(object sender, string root)
+    {
+        // Still mounted means the eject failed, so resume watching the folder.
+        if (IsOnDrive(root) && Directory.Exists(TabPath))
+            OpenTabPath();
     }
 
     private void OnDeviceNotification(object sender, EventArgs e)
